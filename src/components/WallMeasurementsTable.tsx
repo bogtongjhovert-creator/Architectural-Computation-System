@@ -7,10 +7,7 @@ import {
   Edit2,
   FileText,
   DoorOpen,
-  Maximize2,
   Sparkles,
-  Check,
-  AlertTriangle,
 } from 'lucide-react';
 
 interface Props {
@@ -75,23 +72,21 @@ export const WallMeasurementsTable: React.FC<Props> = ({
     setEditingWallId(null);
   };
 
-  const cancelInlineEdit = () => {
-    setEditingWallId(null);
-  };
-
   return (
-    <section id="wall-measurements-section" className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-lg">
+    <section id="wall-measurements-section" className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm font-sans">
       {/* Header bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-800/80">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-4 border-b border-slate-100">
         <div>
-          <h2 className="text-base font-semibold text-slate-100 flex items-center gap-2">
-            Wall Measurements Schedule
-            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+              Wall Measurements Schedule
+            </h2>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-mono font-bold">
               {walls.length} Wall{walls.length === 1 ? '' : 's'}
             </span>
-          </h2>
-          <p className="text-xs text-slate-400">
-            Verify real geometric lengths, heights, and door/window opening deductions with live recalculation.
+          </div>
+          <p className="text-xs text-slate-500 mt-1 font-medium">
+            Geometric dimensions, door/window deductions, and live block unit recalculation.
           </p>
         </div>
 
@@ -100,17 +95,17 @@ export const WallMeasurementsTable: React.FC<Props> = ({
             id="btn-view-all-calculation-details"
             type="button"
             onClick={() => onOpenCalculationDetails(null)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-cyan-300 bg-cyan-950/60 border border-cyan-800/60 hover:bg-cyan-900/60 hover:text-cyan-200 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors"
           >
             <FileText className="w-3.5 h-3.5" />
-            Project Math Audit
+            Audit Math Formula
           </button>
 
           <button
             id="btn-add-wall"
             type="button"
             onClick={onOpenAddModal}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-cyan-600 hover:bg-cyan-500 shadow-md shadow-cyan-950 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-xs transition-colors"
           >
             <Plus className="w-4 h-4" />
             Add Wall
@@ -119,22 +114,22 @@ export const WallMeasurementsTable: React.FC<Props> = ({
       </div>
 
       {/* Table responsive container */}
-      <div className="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950/60">
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
         <table className="w-full text-left text-xs font-mono border-collapse min-w-[840px]">
           <thead>
-            <tr className="bg-slate-950 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
-              <th className="py-3 px-3">Wall ID &amp; Type</th>
+            <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+              <th className="py-3 px-3.5 font-sans">Wall ID &amp; Type</th>
               <th className="py-3 px-3 text-right">Length (m)</th>
               <th className="py-3 px-3 text-right">Height (m)</th>
               <th className="py-3 px-3 text-right">Gross Area</th>
-              <th className="py-3 px-3">Openings (Deduction)</th>
+              <th className="py-3 px-3 font-sans">Openings (Deduction)</th>
               <th className="py-3 px-3 text-right">Net Area</th>
-              <th className="py-3 px-3 text-right text-emerald-400">Base CHB</th>
-              <th className="py-3 px-3 text-right text-slate-300">With {wastePercentage}% Waste</th>
-              <th className="py-3 px-3 text-center">Actions</th>
+              <th className="py-3 px-3 text-right text-blue-600 font-bold">Base CHB</th>
+              <th className="py-3 px-3 text-right text-slate-600">With {wastePercentage}% Waste</th>
+              <th className="py-3 px-3.5 text-center font-sans">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800/80">
+          <tbody className="divide-y divide-slate-100">
             {walls.length > 0 ? (
               walls.map((w) => {
                 const isSelected = selectedWallId === w.id;
@@ -148,24 +143,24 @@ export const WallMeasurementsTable: React.FC<Props> = ({
                     key={w.id}
                     id={`wall-row-${w.id}`}
                     onClick={() => onSelectWall(w.id)}
-                    className={`transition-colors hover:bg-slate-800/40 cursor-pointer ${
-                      isSelected ? 'bg-cyan-950/30 ring-1 ring-cyan-500/40' : ''
+                    className={`transition-colors hover:bg-slate-50/80 cursor-pointer ${
+                      isSelected ? 'bg-blue-50/60 ring-1 ring-blue-500/50' : ''
                     }`}
                   >
                     {/* Wall ID & Type */}
-                    <td className="py-2.5 px-3">
+                    <td className="py-2.5 px-3.5">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-cyan-300 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">
+                        <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100 text-[11px]">
                           {w.id}
                         </span>
                         <div>
-                          <div className="font-sans font-medium text-slate-200 text-xs truncate max-w-[140px]" title={w.name}>
+                          <div className="font-sans font-bold text-slate-900 text-xs truncate max-w-[140px]" title={w.name}>
                             {w.name}
                           </div>
                           <div className="text-[10px] text-slate-400 font-sans">
                             {w.type}
                             {w.isAutoDetected && (
-                              <span className="ml-1 text-[9px] text-cyan-400">● Detected</span>
+                              <span className="ml-1 text-[9px] text-blue-600 font-semibold">● Analyzed</span>
                             )}
                           </div>
                         </div>
@@ -181,7 +176,7 @@ export const WallMeasurementsTable: React.FC<Props> = ({
                           min="0.1"
                           value={editLength}
                           onChange={(e) => setEditLength(e.target.value)}
-                          className="w-16 bg-slate-900 border border-cyan-500 rounded px-1.5 py-0.5 text-right text-xs text-white font-mono focus:outline-none"
+                          className="w-16 bg-white border border-blue-500 rounded px-1.5 py-0.5 text-right text-xs text-slate-900 font-mono focus:outline-none"
                           autoFocus
                         />
                       ) : (
@@ -190,7 +185,7 @@ export const WallMeasurementsTable: React.FC<Props> = ({
                             e.stopPropagation();
                             startInlineEdit(w);
                           }}
-                          className="hover:underline cursor-text text-slate-200 font-semibold"
+                          className="hover:underline cursor-text text-slate-800 font-bold"
                           title="Click to inline edit length"
                         >
                           {w.length.toFixed(2)} m
@@ -207,7 +202,7 @@ export const WallMeasurementsTable: React.FC<Props> = ({
                           min="0.1"
                           value={editHeight}
                           onChange={(e) => setEditHeight(e.target.value)}
-                          className="w-16 bg-slate-900 border border-cyan-500 rounded px-1.5 py-0.5 text-right text-xs text-white font-mono focus:outline-none"
+                          className="w-16 bg-white border border-blue-500 rounded px-1.5 py-0.5 text-right text-xs text-slate-900 font-mono focus:outline-none"
                         />
                       ) : (
                         <span
@@ -215,7 +210,7 @@ export const WallMeasurementsTable: React.FC<Props> = ({
                             e.stopPropagation();
                             startInlineEdit(w);
                           }}
-                          className="hover:underline cursor-text text-slate-300"
+                          className="hover:underline cursor-text text-slate-700"
                           title="Click to inline edit height"
                         >
                           {w.height.toFixed(2)} m
@@ -224,141 +219,107 @@ export const WallMeasurementsTable: React.FC<Props> = ({
                     </td>
 
                     {/* Gross Area */}
-                    <td className="py-2.5 px-3 text-right text-slate-300">
+                    <td className="py-2.5 px-3 text-right text-slate-700 font-semibold">
                       {w.grossArea.toFixed(2)} m²
                     </td>
 
-                    {/* Openings (Doors & Windows) */}
+                    {/* Openings (Deductions) */}
                     <td className="py-2.5 px-3">
                       {w.openings.length > 0 ? (
-                        <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {doorOpenings.length > 0 && (
-                              <span className="px-1.5 py-0.2 rounded bg-rose-950/80 text-rose-300 border border-rose-800/60 text-[10px]">
-                                {doorOpenings.length} Door{doorOpenings.length > 1 ? 's' : ''}
-                              </span>
-                            )}
-                            {windowOpenings.length > 0 && (
-                              <span className="px-1.5 py-0.2 rounded bg-amber-950/80 text-amber-300 border border-amber-800/60 text-[10px]">
-                                {windowOpenings.length} Window{windowOpenings.length > 1 ? 's' : ''}
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-amber-400">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-rose-600 font-bold">
                             −{w.openingArea.toFixed(2)} m²
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-sans">
+                            ({doorOpenings.length}D, {windowOpenings.length}W)
                           </span>
                         </div>
                       ) : (
-                        <span className="text-slate-500 text-[11px]">— None —</span>
+                        <span className="text-slate-400 text-[11px] font-sans">None</span>
                       )}
                     </td>
 
                     {/* Net Area */}
-                    <td className="py-2.5 px-3 text-right font-bold text-cyan-300">
+                    <td className="py-2.5 px-3 text-right font-bold text-slate-900">
                       {w.netArea.toFixed(2)} m²
                     </td>
 
                     {/* Base CHB */}
-                    <td className="py-2.5 px-3 text-right font-bold text-emerald-400">
-                      {w.baseCHB.toLocaleString()} pcs
+                    <td className="py-2.5 px-3 text-right font-black text-blue-600">
+                      {w.baseCHB} pcs
                     </td>
 
                     {/* With Waste Allowance */}
-                    <td className="py-2.5 px-3 text-right text-slate-200 font-semibold">
-                      {finalWithWaste.toLocaleString()} pcs
+                    <td className="py-2.5 px-3 text-right font-bold text-slate-800">
+                      {finalWithWaste} pcs
                     </td>
 
-                    {/* Actions */}
-                    <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                      {isEditing ? (
-                        <div className="flex items-center justify-center gap-1">
+                    {/* Action buttons */}
+                    <td className="py-2.5 px-3.5 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        {isEditing ? (
                           <button
-                            id={`btn-save-inline-${w.id}`}
                             type="button"
-                            onClick={() => saveInlineEdit(w)}
-                            className="p-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              saveInlineEdit(w);
+                            }}
+                            className="p-1 rounded text-emerald-600 hover:bg-emerald-50"
                             title="Save inline edit"
                           >
-                            <Check className="w-3.5 h-3.5" />
+                            ✓
                           </button>
+                        ) : (
                           <button
                             type="button"
-                            onClick={cancelInlineEdit}
-                            className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400"
-                            title="Cancel inline edit"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            id={`btn-audit-wall-${w.id}`}
-                            type="button"
-                            onClick={() => onOpenCalculationDetails(w)}
-                            className="p-1.5 rounded hover:bg-slate-800 text-cyan-400 hover:text-cyan-300"
-                            title="View step-by-step calculation audit for this wall"
-                          >
-                            <FileText className="w-3.5 h-3.5" />
-                          </button>
-
-                          <button
-                            id={`btn-edit-wall-${w.id}`}
-                            type="button"
-                            onClick={() => onOpenEditModal(w)}
-                            className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200"
-                            title="Edit wall & openings"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenEditModal(w);
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-100 transition-colors"
+                            title="Edit Wall & Openings"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
+                        )}
 
-                          <button
-                            id={`btn-delete-wall-${w.id}`}
-                            type="button"
-                            onClick={() => onDeleteWall(w.id)}
-                            className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-rose-400"
-                            title="Delete wall"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenCalculationDetails(w);
+                          }}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                          title="View math details"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteWall(w.id);
+                          }}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          title="Delete wall"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
               })
             ) : (
               <tr>
-                <td colSpan={9} className="py-8 text-center text-slate-500">
-                  <div className="max-w-xs mx-auto text-xs">
-                    <p className="font-medium text-slate-400 mb-1">No Wall Measurements Added</p>
-                    <p className="text-[11px] mb-3">
-                      Click &ldquo;Add Wall&rdquo; above or use the &ldquo;Analyze Blueprint&rdquo; tool to populate measurements.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={onOpenAddModal}
-                      className="px-3 py-1.5 bg-cyan-600 text-white rounded-md text-xs font-semibold"
-                    >
-                      + Add First Wall
-                    </button>
-                  </div>
+                <td colSpan={9} className="py-8 text-center text-slate-400 font-sans">
+                  No walls added yet. Trace on the blueprint or click "Add Wall" or "Analyze Plan".
                 </td>
               </tr>
             )}
           </tbody>
         </table>
-      </div>
-
-      {/* Manual Verification Info Banner (Requirement #10) */}
-      <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 px-1">
-        <span className="flex items-center gap-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-          Tip: Click any <strong>Length</strong> or <strong>Height</strong> value in the table to perform instant manual verification.
-        </span>
-        <span className="font-mono text-slate-500">
-          CHB Unit Size: {chbSettings.lengthMm}×{chbSettings.heightMm}mm ({chbSettings.areaSqM} m²/pc)
-        </span>
       </div>
     </section>
   );

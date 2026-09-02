@@ -3,7 +3,6 @@ import { Wall, CHBSettings, ProjectTotals } from '../types';
 import {
   generateWallAudit,
   formatProjectCalculationText,
-  calculateWallMetrics,
 } from '../utils/calculator';
 import {
   FileText,
@@ -12,7 +11,6 @@ import {
   Check,
   Printer,
   Calculator,
-  ArrowRight,
   ShieldCheck,
 } from 'lucide-react';
 
@@ -51,8 +49,11 @@ export const CalculationDetailsModal: React.FC<Props> = ({
   const handleCopy = () => {
     let textToCopy = '';
     if (isSingleWall && wallAudit) {
-      textToCopy = `=== CALCULATION AUDIT: WALL ${wallAudit.wallId} (${wallAudit.wallName}) ===\n` +
-        wallAudit.steps.map((s) => `${s.title}\nFormula: ${s.formula}\nValues: ${s.substitution}\nResult: ${s.result}\n`).join('\n') +
+      textToCopy =
+        `=== CALCULATION AUDIT: WALL ${wallAudit.wallId} (${wallAudit.wallName}) ===\n` +
+        wallAudit.steps
+          .map((s) => `${s.title}\nFormula: ${s.formula}\nValues: ${s.substitution}\nResult: ${s.result}\n`)
+          .join('\n') +
         `\nRECOMMENDED CHB FOR WALL: ${wallAudit.finalCHB.toLocaleString()} PCS (at ${wastePercentage}% waste)\n`;
     } else {
       textToCopy = fullTextAudit;
@@ -68,24 +69,24 @@ export const CalculationDetailsModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-3xl w-full p-6 shadow-2xl my-8 font-sans">
+    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto font-sans">
+      <div className="bg-white border border-slate-200 rounded-3xl max-w-3xl w-full p-6 sm:p-7 shadow-2xl my-8 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center">
               <Calculator className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-slate-100 flex items-center gap-2">
+              <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
                 {isSingleWall
-                  ? `Calculation Details: Wall ${wall.id} (${wall.name})`
+                  ? `Calculation Details: ${wall.name}`
                   : `Project Calculation Audit & Engineering Breakdown`}
-                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800/60 font-mono">
-                  Verified Math
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-mono font-bold">
+                  Exact Math
                 </span>
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500 font-medium">
                 Transparent step-by-step arithmetic without black-box estimation.
               </p>
             </div>
@@ -94,184 +95,175 @@ export const CalculationDetailsModal: React.FC<Props> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Content Area */}
-        <div className="mt-5 space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-          {/* Main Formula Highlight Card (Matching Prompt Requirement #10) */}
-          <div className="bg-slate-950 border border-cyan-900/70 rounded-xl p-4 font-mono text-xs text-slate-200">
-            <div className="text-slate-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-1.5 text-[11px]">
-              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-              Auditable Formula Steps
-            </div>
-
-            {isSingleWall && wallAudit ? (
-              <div className="space-y-3">
-                {wallAudit.steps.map((step, idx) => (
-                  <div
-                    key={step.title}
-                    className="p-2.5 bg-slate-900/90 rounded-lg border border-slate-800 flex flex-col gap-1"
-                  >
-                    <div className="text-cyan-400 font-semibold text-xs">{step.title}</div>
-                    <div className="text-slate-400 text-[11px]">
-                      Formula: <span className="text-slate-300">{step.formula}</span>
+        {/* Content Body */}
+        <div className="mt-5 space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+          {isSingleWall && wallAudit ? (
+            /* Single Wall Audit Steps */
+            <div className="space-y-3">
+              {wallAudit.steps.map((step, idx) => (
+                <div
+                  key={idx}
+                  className="bg-slate-50 border border-slate-200 rounded-2xl p-4 font-mono text-xs"
+                >
+                  <div className="flex items-center justify-between font-sans font-bold text-slate-900 text-xs pb-1 mb-2 border-b border-slate-200">
+                    <span>{step.title}</span>
+                    <span className="text-blue-600 font-bold font-mono">{step.result}</span>
+                  </div>
+                  <div className="space-y-1 text-slate-600 text-[11px]">
+                    <div>
+                      <span className="text-slate-400">Formula: </span>
+                      <span className="text-slate-800 font-bold">{step.formula}</span>
                     </div>
-                    <div className="flex items-center justify-between text-slate-200 text-xs">
-                      <span>{step.substitution}</span>
-                      <span className="text-emerald-400 font-bold ml-2 font-mono">
-                        = {step.result}
-                      </span>
+                    <div>
+                      <span className="text-slate-400">Values: </span>
+                      <span className="text-slate-700">{step.substitution}</span>
                     </div>
                   </div>
-                ))}
+                </div>
+              ))}
+
+              {/* Total Summary for Single Wall */}
+              <div className="bg-slate-900 text-white rounded-2xl p-4 flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] uppercase font-bold text-slate-400">
+                    Final Wall Requirement
+                  </div>
+                  <div className="text-2xl font-black font-mono text-white">
+                    {wallAudit.finalCHB.toLocaleString()}{' '}
+                    <span className="text-sm font-bold text-blue-400">PCS</span>
+                  </div>
+                </div>
+                <div className="text-right text-xs text-slate-400 font-mono">
+                  <div>Base: {wallAudit.baseCHB} pcs</div>
+                  <div>+{wastePercentage}% waste ({wallAudit.finalCHB - wallAudit.baseCHB} pcs)</div>
+                </div>
               </div>
-            ) : (
-              /* Project-wide audit steps matching requirement #10 */
-              <div className="space-y-3">
-                {/* Step 1: Net Wall Area */}
-                <div className="p-3 bg-slate-900/90 rounded-lg border border-slate-800">
-                  <div className="text-cyan-400 font-semibold text-xs mb-1">
-                    1. Net Wall Area Calculation
+            </div>
+          ) : (
+            /* Project-Wide Detailed Math Steps */
+            <div className="space-y-4 font-mono text-xs">
+              {/* Formula reference cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                  <div className="font-sans font-bold text-slate-900 text-xs mb-1">
+                    1. Unit Block Coverage Ratio
                   </div>
-                  <div className="text-slate-400 text-[11px]">
-                    Net Wall Area = Total Gross Wall Area − Total Opening Area (Doors &amp; Windows)
+                  <div className="text-slate-500 text-[11px] mb-2 font-sans">
+                    Derived from {chbSettings.lengthMm}mm × {chbSettings.heightMm}mm standard dimension.
                   </div>
-                  <div className="text-slate-200 mt-1 flex justify-between font-bold">
-                    <span>
-                      {projectTotals.totalGrossAreaSqM.toFixed(2)} m² −{' '}
-                      {projectTotals.totalOpeningAreaSqM.toFixed(2)} m²
-                    </span>
-                    <span className="text-cyan-300">
-                      = {projectTotals.totalNetAreaSqM.toFixed(2)} m²
-                    </span>
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200 text-blue-600 font-bold">
+                    Area = {chbSettings.lengthMm / 1000}m × {chbSettings.heightMm / 1000}m = {chbSettings.areaSqM.toFixed(4)} m²
                   </div>
-                </div>
-
-                {/* Step 2: CHB Size & Area */}
-                <div className="p-3 bg-slate-900/90 rounded-lg border border-slate-800">
-                  <div className="text-cyan-400 font-semibold text-xs mb-1">
-                    2. CHB Block Coverage
-                  </div>
-                  <div className="text-slate-400 text-[11px]">
-                    CHB Size = {chbSettings.lengthMm} × {chbSettings.heightMm} mm
-                  </div>
-                  <div className="text-slate-200 mt-1">
-                    CHB Area = {(chbSettings.lengthMm / 1000).toFixed(2)} m ×{' '}
-                    {(chbSettings.heightMm / 1000).toFixed(2)} m ={' '}
-                    <span className="text-emerald-400 font-bold">
-                      {chbSettings.areaSqM.toFixed(4)} m² ({chbSettings.blocksPerSqM} blocks/m²)
-                    </span>
+                  <div className="text-[11px] text-emerald-700 font-bold mt-1.5 font-sans">
+                    Coverage = 1 / {chbSettings.areaSqM.toFixed(4)} = {chbSettings.blocksPerSqM} pcs / m²
                   </div>
                 </div>
 
-                {/* Step 3: Base CHB */}
-                <div className="p-3 bg-slate-900/90 rounded-lg border border-slate-800">
-                  <div className="text-cyan-400 font-semibold text-xs mb-1">
-                    3. Base Hollow Block Quantity
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                  <div className="font-sans font-bold text-slate-900 text-xs mb-1">
+                    2. Net Masonry Area Formula
                   </div>
-                  <div className="text-slate-400 text-[11px]">
-                    Base CHB = ⌈Net Wall Area ÷ CHB Area⌉ (Always rounded upward)
+                  <div className="text-slate-500 text-[11px] mb-2 font-sans">
+                    Deducting total door and window opening schedule.
                   </div>
-                  <div className="text-slate-200 mt-1 flex justify-between font-bold">
-                    <span>
-                      {projectTotals.totalNetAreaSqM.toFixed(2)} ÷ {chbSettings.areaSqM.toFixed(4)}
-                    </span>
-                    <span className="text-emerald-400">
-                      = {projectTotals.baseCHBQuantity.toLocaleString()} pcs
-                    </span>
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200 text-blue-600 font-bold">
+                    Net Area = {projectTotals.totalGrossAreaSqM.toFixed(2)}m² − {projectTotals.totalOpeningAreaSqM.toFixed(2)}m²
                   </div>
-                </div>
-
-                {/* Step 4: Waste Allowance & Final */}
-                <div className="p-3 bg-slate-900/90 rounded-lg border border-slate-800">
-                  <div className="text-cyan-400 font-semibold text-xs mb-1">
-                    4. Waste Allowance &amp; Recommended Total
-                  </div>
-                  <div className="text-slate-400 text-[11px]">
-                    Final CHB = ⌈Base CHB × (1 + Waste Percentage)⌉
-                  </div>
-                  <div className="text-slate-200 mt-1 flex justify-between font-bold">
-                    <span>
-                      {projectTotals.baseCHBQuantity.toLocaleString()} × (1 +{' '}
-                      {(wastePercentage / 100).toFixed(2)})
-                    </span>
-                    <span className="text-cyan-400">
-                      = {projectTotals.finalCHBQuantity.toLocaleString()} pcs
-                    </span>
+                  <div className="text-[11px] text-blue-700 font-bold mt-1.5 font-sans">
+                    Total Net Masonry = {projectTotals.totalNetAreaSqM.toFixed(2)} m²
                   </div>
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* Prominent Recommendation Display */}
-          <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-2 border-cyan-500/60 rounded-xl p-4 text-center">
-            <span className="text-xs font-semibold text-cyan-400 uppercase tracking-widest block mb-1">
-              Final Quantity Required
-            </span>
-            <div className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">
-              RECOMMENDED CHB:{' '}
-              <span className="text-cyan-300">
-                {isSingleWall && wallAudit
-                  ? `${wallAudit.finalCHB.toLocaleString()} PCS`
-                  : `${projectTotals.finalCHBQuantity.toLocaleString()} PCS`}
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 mt-1 font-mono">
-              Includes {wastePercentage}% waste allowance ({chbSettings.lengthMm}×{chbSettings.heightMm}mm block size)
-            </p>
-          </div>
+              {/* Step 3: Base CHB Pieces */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                <div className="font-sans font-bold text-slate-900 text-xs mb-1">
+                  3. Base Hollow Blocks Required
+                </div>
+                <div className="text-slate-500 text-[11px] mb-2 font-sans">
+                  Total Net Wall Area multiplied by Unit Coverage pieces/m² (rounded up to nearest whole block).
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-slate-200 text-slate-800 font-bold">
+                  Base CHB = ⌈ {projectTotals.totalNetAreaSqM.toFixed(2)} m² × {chbSettings.blocksPerSqM} pcs/m² ⌉ = {projectTotals.baseCHBQuantity.toLocaleString()} pcs
+                </div>
+              </div>
 
-          {/* Formatted Code Block Display for Copying / Export */}
-          <div>
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5 font-medium">
-              <span>Plain-Text Calculation Log (Auditable)</span>
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="inline-flex items-center gap-1 text-cyan-400 hover:text-cyan-300 transition-colors"
-              >
-                {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                {copied ? 'Copied to Clipboard' : 'Copy Audit Log'}
-              </button>
+              {/* Step 4: Waste Allowance & Final Recommendation */}
+              <div className="bg-slate-900 text-white rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div>
+                  <div className="text-[10px] uppercase font-bold text-slate-400 font-sans">
+                    Final Recommended Order Quantity
+                  </div>
+                  <div className="text-3xl font-black font-mono text-white mt-0.5">
+                    {projectTotals.finalCHBQuantity.toLocaleString()}{' '}
+                    <span className="text-base font-bold text-blue-400">PCS</span>
+                  </div>
+                  <div className="text-xs text-slate-400 font-sans mt-1">
+                    Base: {projectTotals.baseCHBQuantity.toLocaleString()} pcs + {projectTotals.wastePercentage}% Waste ({projectTotals.wasteQuantity.toLocaleString()} pcs)
+                  </div>
+                </div>
+
+                <div className="bg-slate-800 p-3 rounded-xl border border-slate-700 text-right text-xs font-mono text-slate-300">
+                  <div className="text-[10px] uppercase font-bold text-slate-400 font-sans">
+                    Auxiliary Materials
+                  </div>
+                  <div className="text-blue-300 font-bold">
+                    {projectTotals.mortarCementBags + projectTotals.plasterCementBags} Bags Cement
+                  </div>
+                  <div className="text-amber-300 font-bold">
+                    {projectTotals.sandCubicMeters} m³ Sand
+                  </div>
+                </div>
+              </div>
             </div>
-            <pre className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 text-[11px] font-mono text-slate-300 overflow-x-auto whitespace-pre leading-relaxed">
-              {isSingleWall && wallAudit
-                ? `Net Wall Area = ${wallAudit.netWallArea.toFixed(2)} m²\n\nCHB Size = ${chbSettings.lengthMm} × ${chbSettings.heightMm} mm\n\nCHB Area =\n${(chbSettings.lengthMm / 1000).toFixed(2)} × ${(chbSettings.heightMm / 1000).toFixed(2)}\n= ${chbSettings.areaSqM.toFixed(4)} m²\n\nBase CHB =\n${wallAudit.netWallArea.toFixed(2)} ÷ ${chbSettings.areaSqM.toFixed(4)}\n= ${wallAudit.baseCHB.toLocaleString()} pcs\n\nWaste =\n${wastePercentage}%\n\nFinal Quantity =\n${wallAudit.baseCHB.toLocaleString()} × ${(1 + wastePercentage / 100).toFixed(2)}\n= ${wallAudit.finalCHB.toLocaleString()} pcs`
-                : fullTextAudit}
-            </pre>
-          </div>
+          )}
         </div>
 
-        {/* Modal Actions */}
-        <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-800 mt-4">
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white transition-colors"
-          >
-            <Printer className="w-3.5 h-3.5" />
-            Print Report
-          </button>
+        {/* Footer Actions */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-4 mt-4 border-t border-slate-100">
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            <span>DPWH &amp; ASTM C90 Compliant Calculation Standards</span>
+          </div>
 
           <div className="flex items-center gap-2">
             <button
-              id="btn-copy-calc-audit"
               type="button"
               onClick={handleCopy}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-cyan-300 bg-cyan-950 border border-cyan-800/80 hover:bg-cyan-900 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors"
             >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Copy Report</span>
+                </>
+              )}
             </button>
+
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors"
+            >
+              <Printer className="w-3.5 h-3.5 text-slate-600" />
+              <span>Print</span>
+            </button>
+
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200"
+              className="px-4 py-1.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-xs"
             >
               Close
             </button>

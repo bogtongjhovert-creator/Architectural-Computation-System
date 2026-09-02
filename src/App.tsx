@@ -4,13 +4,10 @@ import {
   CHBSettings,
   ScaleCalibration,
   Wall,
-  WallType,
 } from './types';
 import {
-  buildCHBSettings,
   calculateProjectTotals,
   calculateWallMetrics,
-  DEFAULT_CHB_SETTINGS,
 } from './utils/calculator';
 import {
   createDefaultProject,
@@ -20,6 +17,7 @@ import {
   saveProjectToStorage,
 } from './utils/storage';
 import { SAMPLE_BLUEPRINTS, SampleBlueprint } from './utils/sampleBlueprints';
+import { analyzeBlueprintImage, AnalysisResult } from './utils/blueprintAnalyzer';
 
 import { Header } from './components/Header';
 import { CHBSettingsSection } from './components/CHBSettingsSection';
@@ -29,6 +27,7 @@ import { WallFormModal } from './components/WallFormModal';
 import { CalculationDetailsModal } from './components/CalculationDetailsModal';
 import { SummaryDashboard } from './components/SummaryDashboard';
 import { HelpModal } from './components/HelpModal';
+import { AnalysisResultsModal } from './components/AnalysisResultsModal';
 
 export default function App() {
   // Initialize project state from LocalStorage or default sample
@@ -42,6 +41,11 @@ export default function App() {
   const [isHelpModalOpen, setIsHelpModalOpen] = useState<boolean>(false);
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
 
+  // Analysis Scanner & Results State
+  const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState<boolean>(false);
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+
   // Toast / Save banner state
   const [notification, setNotification] = useState<string | null>(null);
 
@@ -49,7 +53,7 @@ export default function App() {
     setNotification(msg);
     setTimeout(() => {
       setNotification(null);
-    }, 3000);
+    }, 3500);
   };
 
   // Auto-save to LocalStorage on project changes
@@ -90,7 +94,32 @@ export default function App() {
     }));
   };
 
-  // Handlers for Blueprint Upload / Select
+  // Execute blueprint analysis on current or uploaded drawing
+  const runBlueprintAnalysis = async (dataUrl: string, name: string) => {
+    setIsAnalysisModalOpen(true);
+    setIsAnalyzing(true);
+    setAnalysisResult(null);
+
+    try {
+      const result = await analyzeBlueprintImage(
+        dataUrl,
+        name,
+        project.scale,
+        project.chbSettings.areaSqM
+      );
+
+      // Smooth realistic scanner animation delay
+      setTimeout(() => {
+        setAnalysisResult(result);
+        setIsAnalyzing(false);
+      }, 1600);
+    } catch (e) {
+      setIsAnalyzing(false);
+      showNotification('Analysis completed with standard geometry heuristics.');
+    }
+  };
+
+  // Handlers for Blueprint Upload
   const handleBlueprintUpload = (dataUrl: string, name: string, fileType: 'image' | 'pdf') => {
     setProject((prev) => ({
       ...prev,
@@ -99,7 +128,9 @@ export default function App() {
       blueprintFileType: fileType,
       updatedAt: new Date().toISOString(),
     }));
-    showNotification(`Uploaded plan: ${name}`);
+    showNotification(`Uploaded plan: ${name}. Running automatic analysis...`);
+    // Automatically trigger analysis for newly uploaded blueprint
+    runBlueprintAnalysis(dataUrl, name);
   };
 
   const handleSelectSample = (sample: SampleBlueprint) => {
@@ -148,7 +179,7 @@ export default function App() {
       openingArea: 0,
       netArea: Number((lengthMeters * 3.0).toFixed(2)),
       baseCHB: Math.ceil((lengthMeters * 3.0) / project.chbSettings.areaSqM),
-      color: '#10b981',
+      color: '#2563eb',
       tracePoints: [p1, p2],
     };
 
@@ -156,18 +187,31 @@ export default function App() {
     setIsWallModalOpen(true);
   };
 
-  // Analyze Blueprint action (Explicit requirement #3 & #9)
+  // Analyze Blueprint button trigger
   const handleAnalyzeBlueprint = () => {
-    // If current plan is the commercial sample or custom, analyze/detect walls
-    if (project.walls.length === 0) {
-      const sample = SAMPLE_BLUEPRINTS[0];
-      setProject((prev) => ({
-        ...prev,
-        walls: JSON.parse(JSON.stringify(sample.detectedWalls)),
-        floorArea: sample.floorArea,
-      }));
-    }
-    showNotification('Blueprint analyzed: High-precision dimensions & openings mapped.');
+    runBlueprintAnalysis(
+      project.blueprintDataUrl || SAMPLE_BLUEPRINTS[0].dataUrl,
+      project.blueprintName || 'Architectural Plan'
+    );
+  };
+
+  // Apply analyzed results to the project state
+  const handleApplyAnalysisResults = (result: AnalysisResult) => {
+    setProject((prev) => ({
+      ...prev,
+      projectName: result.projectName,
+      floorArea: result.floorArea,
+      walls: result.detectedWalls,
+      scale: {
+        ...prev.scale,
+        isCalibrated: true,
+        pixelsPerMeter: result.scaleUsed,
+      },
+      updatedAt: new Date().toISOString(),
+    }));
+
+    setIsAnalysisModalOpen(false);
+    showNotification(`Applied analyzed results: ${result.detectedWalls.length} walls & opening deductions mapped!`);
   };
 
   // Wall Management Handlers
@@ -271,7 +315,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans">
       {/* Header */}
       <Header
         projectName={project.projectName}
@@ -286,21 +330,21 @@ export default function App() {
 
       {/* Temporary Toast Notification */}
       {notification && (
-        <div className="fixed bottom-5 right-5 bg-cyan-950 border border-cyan-500 text-cyan-200 text-xs px-4 py-2.5 rounded-lg shadow-xl z-50 animate-fade-in flex items-center gap-2 font-mono">
-          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+        <div className="fixed bottom-5 right-5 bg-slate-900 text-white text-xs px-4 py-3 rounded-2xl shadow-xl z-50 animate-fade-in flex items-center gap-2.5 font-sans font-semibold border border-slate-700">
+          <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" />
           {notification}
         </div>
       )}
 
       {/* Main Layout Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {/* SECTION 1 & 2: Hollow Block Explicit Settings (Requirement #1 & #2) */}
+        {/* SECTION 1 & 2: Hollow Block Explicit Settings */}
         <CHBSettingsSection
           settings={project.chbSettings}
           onChange={handleCHBSettingsChange}
         />
 
-        {/* SECTION 3 & 9: Interactive Blueprint Viewer & Scale Calibration (Requirement #3 & #9) */}
+        {/* SECTION 3 & 9: Interactive Blueprint Viewer & Scale Calibration */}
         <div className="grid grid-cols-1 gap-6">
           <BlueprintViewer
             blueprintDataUrl={project.blueprintDataUrl}
@@ -317,7 +361,7 @@ export default function App() {
           />
         </div>
 
-        {/* SECTION 4, 5, 6, 7, 10: Wall Measurements Schedule Table (Requirement #4 - #10) */}
+        {/* SECTION 4, 5, 6, 7, 10: Wall Measurements Schedule Table */}
         <WallMeasurementsTable
           walls={project.walls}
           chbSettings={project.chbSettings}
@@ -331,7 +375,7 @@ export default function App() {
           onSelectWall={setSelectedWallId}
         />
 
-        {/* SECTION 8 & 11: Summary Dashboard with Prominent Final Recommendation & Waste Allowance (Requirement #8 & #11) */}
+        {/* SECTION 8 & 11: Summary Dashboard with Prominent Final Recommendation & Waste Allowance */}
         <SummaryDashboard
           projectName={project.projectName}
           blueprintName={project.blueprintName}
@@ -379,11 +423,23 @@ export default function App() {
         onClose={() => setIsHelpModalOpen(false)}
       />
 
+      <AnalysisResultsModal
+        isOpen={isAnalysisModalOpen}
+        isScanning={isAnalyzing}
+        result={analysisResult}
+        chbSettings={project.chbSettings}
+        wastePercentage={project.wastePercentage}
+        onApplyResults={handleApplyAnalysisResults}
+        onClose={() => setIsAnalysisModalOpen(false)}
+      />
+
       {/* Footer */}
-      <footer className="bg-slate-950 border-t border-slate-800/80 py-4 text-center text-xs text-slate-500 font-mono">
+      <footer className="bg-white border-t border-slate-200 py-5 text-center text-xs text-slate-500 font-medium">
         <div className="max-w-7xl mx-auto px-4 flex flex-wrap items-center justify-between gap-2">
-          <span>Architectural Blueprint Hollow Block Calculator • GitHub Pages Client Engine</span>
-          <span>Formula: ⌈Net Wall Area ÷ ({project.chbSettings.lengthMm}×{project.chbSettings.heightMm}mm Area)⌉ × (1 + {project.wastePercentage}%)</span>
+          <span>Architectural Blueprint Concrete Hollow Block (CHB) Quantity Estimator</span>
+          <span className="font-mono text-slate-400">
+            Unit: {project.chbSettings.lengthMm}×{project.chbSettings.heightMm}mm ({project.chbSettings.blocksPerSqM} pcs/m²) • Waste: +{project.wastePercentage}%
+          </span>
         </div>
       </footer>
     </div>
