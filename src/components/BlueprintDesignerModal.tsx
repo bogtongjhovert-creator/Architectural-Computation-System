@@ -24,6 +24,22 @@ import {
   FileCode,
   FolderOpen,
   FileSpreadsheet,
+  MousePointer2,
+  Hand,
+  RotateCcw,
+  HelpCircle,
+  Maximize,
+  ZoomIn,
+  ZoomOut,
+  ChevronRight,
+  Settings2,
+  LayoutGrid,
+  ListTree,
+  Building,
+  ShieldAlert,
+  ArrowRightLeft,
+  Columns,
+  Tag,
 } from 'lucide-react';
 import {
   Wall,
@@ -60,7 +76,8 @@ type DrawTool =
   | 'window'
   | 'room_label'
   | 'dimension'
-  | 'column';
+  | 'column'
+  | 'pan';
 
 type ThemeMode = 'blueprint' | 'darkcad' | 'monochrome';
 
@@ -81,24 +98,44 @@ const ROOM_NAMES = [
   'SERVICE / LAUNDRY',
   'BALCONY',
   'HALLWAY',
+  'OFFICE / STUDY',
+  'STORAGE ROOM',
+];
+
+const QUICK_ROOM_TEMPLATES = [
+  { name: 'Master Bedroom', widthM: 4.0, heightM: 4.0, area: 16.0, icon: '🛏️', type: 'Exterior Wall' as WallType },
+  { name: 'Living Area', widthM: 5.0, heightM: 4.0, area: 20.0, icon: '🛋️', type: 'Exterior Wall' as WallType },
+  { name: 'Kitchen', widthM: 3.0, heightM: 3.0, area: 9.0, icon: '🍳', type: 'Interior Wall' as WallType },
+  { name: 'Dining Area', widthM: 4.0, heightM: 3.0, area: 12.0, icon: '🍽️', type: 'Interior Wall' as WallType },
+  { name: 'Toilet & Bath', widthM: 2.0, heightM: 1.8, area: 3.6, icon: '🚿', type: 'Partition Wall' as WallType },
+  { name: 'Carport / Garage', widthM: 5.0, heightM: 3.0, area: 15.0, icon: '🚗', type: 'Exterior Wall' as WallType },
+  { name: 'Front Porch', widthM: 3.0, heightM: 1.5, area: 4.5, icon: '🌿', type: 'Exterior Wall' as WallType },
+  { name: 'Service / Laundry', widthM: 2.5, heightM: 2.0, area: 5.0, icon: '🧺', type: 'Partition Wall' as WallType },
 ];
 
 const DOOR_PRESETS = [
-  { label: 'Main Door (0.90 × 2.10m)', width: 0.9, height: 2.1, type: 'door' },
-  { label: 'Bedroom Door (0.80 × 2.10m)', width: 0.8, height: 2.1, type: 'door' },
-  { label: 'T&B Door (0.70 × 2.10m)', width: 0.7, height: 2.1, type: 'door' },
-  { label: 'Double French Door (1.60 × 2.10m)', width: 1.6, height: 2.1, type: 'door' },
-  { label: 'Sliding Patio Door (1.80 × 2.10m)', width: 1.8, height: 2.1, type: 'door' },
-  { label: 'Vehicular Gate (3.00 × 2.00m)', width: 3.0, height: 2.0, type: 'door' },
+  { label: 'Main Entrance Door', width: 0.9, height: 2.1, code: 'D-1' },
+  { label: 'Bedroom Single Door', width: 0.8, height: 2.1, code: 'D-2' },
+  { label: 'T&B Bathroom Door', width: 0.7, height: 2.1, code: 'D-3' },
+  { label: 'Double French Door', width: 1.6, height: 2.1, code: 'D-4' },
+  { label: 'Sliding Patio Door', width: 1.8, height: 2.1, code: 'D-5' },
+  { label: 'Vehicular Gate', width: 3.0, height: 2.0, code: 'GATE' },
 ];
 
 const WINDOW_PRESETS = [
-  { label: 'Standard Window (1.20 × 1.20m)', width: 1.2, height: 1.2, type: 'window' },
-  { label: 'Wide Living Window (1.50 × 1.20m)', width: 1.5, height: 1.2, type: 'window' },
-  { label: 'Picture Window (2.00 × 1.50m)', width: 2.0, height: 1.5, type: 'window' },
-  { label: 'Kitchen Counter Window (1.00 × 0.90m)', width: 1.0, height: 0.9, type: 'window' },
-  { label: 'Bathroom Awning (0.60 × 0.60m)', width: 0.6, height: 0.6, type: 'window' },
+  { label: 'Standard Window', width: 1.2, height: 1.2, code: 'W-1' },
+  { label: 'Wide Living Window', width: 1.5, height: 1.2, code: 'W-2' },
+  { label: 'Picture Window', width: 2.0, height: 1.5, code: 'W-3' },
+  { label: 'Kitchen Counter Window', width: 1.0, height: 0.9, code: 'W-4' },
+  { label: 'Bathroom Awning', width: 0.6, height: 0.6, code: 'W-5' },
 ];
+
+const WALL_HEIGHT_PRESETS = [2.6, 2.8, 3.0, 3.2, 3.6, 4.0];
+
+interface SelectedElement {
+  type: 'wall' | 'door' | 'window' | 'room' | 'column' | 'dimension';
+  id: string;
+}
 
 export const BlueprintDesignerModal: React.FC<Props> = ({
   isOpen,
@@ -150,11 +187,12 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
   const [selectedWindowPreset, setSelectedWindowPreset] = useState(WINDOW_PRESETS[0]);
   const [selectedRoomName, setSelectedRoomName] = useState<string>(ROOM_NAMES[0]);
   const [blueprintTheme, setBlueprintTheme] = useState<ThemeMode>('blueprint');
-  const [planTitle, setPlanTitle] = useState<string>('Custom Floor Plan & Masonry Layout');
+  const [planTitle, setPlanTitle] = useState<string>('Custom Architectural Blueprint');
 
   // Snapping and constraints
   const [gridSnapMeters, setGridSnapMeters] = useState<number>(0.5); // 0.5m snap
   const [isOrthoLocked, setIsOrthoLocked] = useState<boolean>(true); // 90° angle lock
+  const [magneticVertexSnap, setMagneticVertexSnap] = useState<boolean>(true);
 
   // Canvas Viewport Pan/Zoom
   const [zoom, setZoom] = useState<number>(1);
@@ -162,18 +200,28 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
   const [isPanning, setIsPanning] = useState<boolean>(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  // Interactive Drawing states
+  // Interactive Drawing & Selection states
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [drawCurrent, setDrawCurrent] = useState<{ x: number; y: number } | null>(null);
-  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [snapInfo, setSnapInfo] = useState<{ x: number; y: number; type: 'corner' | 'midpoint' | 'grid' } | null>(null);
+  const [hoveredWall, setHoveredWall] = useState<Wall | null>(null);
+
+  // Dragging selected element
+  const [isDraggingElement, setIsDraggingElement] = useState<boolean>(false);
+  const [dragElementStartPos, setDragElementStartPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Sidebar navigation tabs
+  const [sidebarTab, setSidebarTab] = useState<'inspector' | 'templates' | 'schedule'>('inspector');
+  const [showShortcutsModal, setShowShortcutsModal] = useState<boolean>(false);
 
   // Sync state to history
   const pushToHistory = useCallback(
     (newState: DesignerPlanState) => {
       const nextHistory = history.slice(0, historyIndex + 1);
       nextHistory.push(newState);
-      if (nextHistory.length > 25) nextHistory.shift();
+      if (nextHistory.length > 30) nextHistory.shift();
       setHistory(nextHistory);
       setHistoryIndex(nextHistory.length - 1);
     },
@@ -190,6 +238,7 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       setDimensions(prev.dimensions);
       setColumns(prev.columns);
       setHistoryIndex(historyIndex - 1);
+      setSelectedElement(null);
     }
   };
 
@@ -203,17 +252,52 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       setDimensions(next.dimensions);
       setColumns(next.columns);
       setHistoryIndex(historyIndex + 1);
+      setSelectedElement(null);
     }
   };
 
-  // Helper to snap canvas pixel coordinate to grid meters
-  const snapToGrid = useCallback(
-    (pixelVal: number): number => {
-      if (gridSnapMeters <= 0) return Math.round(pixelVal);
+  // Helper to snap canvas pixel coordinate with magnetic vertex snapping
+  const snapToGridAndVertices = useCallback(
+    (rawX: number, rawY: number): { x: number; y: number; snapType: 'corner' | 'midpoint' | 'grid' } => {
+      // 1. Magnetic vertex snap to wall corners (endpoints)
+      if (magneticVertexSnap) {
+        const SNAP_RADIUS_PX = 18;
+        for (const w of walls) {
+          if (w.tracePoints && w.tracePoints.length >= 2) {
+            const p1 = w.tracePoints[0];
+            const p2 = w.tracePoints[1];
+
+            const d1 = Math.hypot(rawX - p1.x, rawY - p1.y);
+            if (d1 < SNAP_RADIUS_PX) {
+              return { x: p1.x, y: p1.y, snapType: 'corner' };
+            }
+
+            const d2 = Math.hypot(rawX - p2.x, rawY - p2.y);
+            if (d2 < SNAP_RADIUS_PX) {
+              return { x: p2.x, y: p2.y, snapType: 'corner' };
+            }
+
+            // Midpoint snap
+            const midX = (p1.x + p2.x) / 2;
+            const midY = (p1.y + p2.y) / 2;
+            const dMid = Math.hypot(rawX - midX, rawY - midY);
+            if (dMid < SNAP_RADIUS_PX) {
+              return { x: midX, y: midY, snapType: 'midpoint' };
+            }
+          }
+        }
+      }
+
+      // 2. Standard Grid Snap
+      if (gridSnapMeters <= 0) return { x: Math.round(rawX), y: Math.round(rawY), snapType: 'grid' };
       const snapPx = gridSnapMeters * SCALE_PPM;
-      return Math.round(pixelVal / snapPx) * snapPx;
+      return {
+        x: Math.round(rawX / snapPx) * snapPx,
+        y: Math.round(rawY / snapPx) * snapPx,
+        snapType: 'grid',
+      };
     },
-    [gridSnapMeters]
+    [gridSnapMeters, magneticVertexSnap, walls]
   );
 
   // Helper to apply Ortho (horizontal / vertical constraint)
@@ -240,12 +324,13 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
     setDimensions(JSON.parse(JSON.stringify(preset.state.dimensions)));
     setColumns(JSON.parse(JSON.stringify(preset.state.columns)));
     setPlanTitle(preset.name);
+    setSelectedElement(null);
     pushToHistory(preset.state);
   };
 
   // Clear canvas to blank
   const handleClearCanvas = () => {
-    if (window.confirm('Clear blueprint canvas and start with a blank drawing grid?')) {
+    if (window.confirm('Clear blueprint canvas and start with a blank architectural grid?')) {
       const blankState: DesignerPlanState = {
         walls: [],
         doors: [],
@@ -260,31 +345,257 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       setRooms([]);
       setDimensions([]);
       setColumns([]);
+      setSelectedElement(null);
       pushToHistory(blankState);
     }
+  };
+
+  // Quick Drop a Room Template into the canvas center
+  const handleDropRoomTemplate = (template: typeof QUICK_ROOM_TEMPLATES[0]) => {
+    const centerMetersX = 10;
+    const centerMetersY = 8;
+    const offsetPxX = (Math.random() - 0.5) * 80;
+    const offsetPxY = (Math.random() - 0.5) * 80;
+
+    const wPx = template.widthM * SCALE_PPM;
+    const hPx = template.heightM * SCALE_PPM;
+    const cx = (centerMetersX * SCALE_PPM) + offsetPxX;
+    const cy = (centerMetersY * SCALE_PPM) + offsetPxY;
+
+    const x1 = Math.round((cx - wPx / 2) / 20) * 20;
+    const x2 = Math.round((cx + wPx / 2) / 20) * 20;
+    const y1 = Math.round((cy - hPx / 2) / 20) * 20;
+    const y2 = Math.round((cy + hPx / 2) / 20) * 20;
+
+    const startNum = walls.length + 1;
+    const roomWalls: Wall[] = [
+      {
+        id: `W${String(startNum).padStart(2, '0')}`,
+        name: `${template.name} North Wall`,
+        type: template.type,
+        length: template.widthM,
+        height: currentWallHeight,
+        grossArea: Number((template.widthM * currentWallHeight).toFixed(2)),
+        openingArea: 0,
+        netArea: Number((template.widthM * currentWallHeight).toFixed(2)),
+        baseCHB: Math.ceil((template.widthM * currentWallHeight) / chbAreaSqM),
+        tracePoints: [{ x: x1, y: y1 }, { x: x2, y: y1 }],
+        openings: [],
+      },
+      {
+        id: `W${String(startNum + 1).padStart(2, '0')}`,
+        name: `${template.name} East Wall`,
+        type: template.type,
+        length: template.heightM,
+        height: currentWallHeight,
+        grossArea: Number((template.heightM * currentWallHeight).toFixed(2)),
+        openingArea: 0,
+        netArea: Number((template.heightM * currentWallHeight).toFixed(2)),
+        baseCHB: Math.ceil((template.heightM * currentWallHeight) / chbAreaSqM),
+        tracePoints: [{ x: x2, y: y1 }, { x: x2, y: y2 }],
+        openings: [],
+      },
+      {
+        id: `W${String(startNum + 2).padStart(2, '0')}`,
+        name: `${template.name} South Wall`,
+        type: template.type,
+        length: template.widthM,
+        height: currentWallHeight,
+        grossArea: Number((template.widthM * currentWallHeight).toFixed(2)),
+        openingArea: 0,
+        netArea: Number((template.widthM * currentWallHeight).toFixed(2)),
+        baseCHB: Math.ceil((template.widthM * currentWallHeight) / chbAreaSqM),
+        tracePoints: [{ x: x1, y: y2 }, { x: x2, y: y2 }],
+        openings: [],
+      },
+      {
+        id: `W${String(startNum + 3).padStart(2, '0')}`,
+        name: `${template.name} West Wall`,
+        type: template.type,
+        length: template.heightM,
+        height: currentWallHeight,
+        grossArea: Number((template.heightM * currentWallHeight).toFixed(2)),
+        openingArea: 0,
+        netArea: Number((template.heightM * currentWallHeight).toFixed(2)),
+        baseCHB: Math.ceil((template.heightM * currentWallHeight) / chbAreaSqM),
+        tracePoints: [{ x: x1, y: y1 }, { x: x1, y: y2 }],
+        openings: [],
+      },
+    ];
+
+    const newRoom: DesignerRoomLabel = {
+      id: `room-${Date.now()}`,
+      name: template.name.toUpperCase(),
+      x: (x1 + x2) / 2,
+      y: (y1 + y2) / 2,
+      widthM: template.widthM,
+      heightM: template.heightM,
+      customArea: template.area,
+    };
+
+    const updatedWalls = [...walls, ...roomWalls];
+    const updatedRooms = [...rooms, newRoom];
+    setWalls(updatedWalls);
+    setRooms(updatedRooms);
+    pushToHistory({ walls: updatedWalls, doors, windows, rooms: updatedRooms, dimensions, columns });
+    setSelectedElement({ type: 'room', id: newRoom.id });
   };
 
   // Canvas Mouse Coordinates Transformer
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
+    if (!canvas) return { x: 0, y: 0, rawX: 0, rawY: 0, snapType: 'grid' as const };
     const rect = canvas.getBoundingClientRect();
     const rawX = (e.clientX - rect.left - pan.x) / zoom;
     const rawY = (e.clientY - rect.top - pan.y) / zoom;
+    const snapped = snapToGridAndVertices(rawX, rawY);
     return {
-      x: snapToGrid(rawX),
-      y: snapToGrid(rawY),
+      x: snapped.x,
+      y: snapped.y,
       rawX,
       rawY,
+      snapType: snapped.snapType,
     };
   };
+
+  // Find item under cursor for selection
+  const findElementAtCoords = (x: number, y: number): SelectedElement | null => {
+    // Check Doors first
+    for (const d of doors) {
+      const w = d.widthM * SCALE_PPM;
+      if (Math.abs(x - d.x) <= w / 2 + 10 && Math.abs(y - d.y) <= 15) {
+        return { type: 'door', id: d.id };
+      }
+    }
+
+    // Check Windows
+    for (const win of windows) {
+      const w = win.widthM * SCALE_PPM;
+      if (Math.abs(x - win.x) <= w / 2 + 10 && Math.abs(y - win.y) <= 15) {
+        return { type: 'window', id: win.id };
+      }
+    }
+
+    // Check Columns
+    for (const col of columns) {
+      const size = col.sizeM * SCALE_PPM;
+      if (Math.abs(x - col.x) <= size / 2 + 5 && Math.abs(y - col.y) <= size / 2 + 5) {
+        return { type: 'column', id: col.id };
+      }
+    }
+
+    // Check Room labels
+    for (const r of rooms) {
+      if (Math.abs(x - r.x) <= 60 && Math.abs(y - r.y) <= 25) {
+        return { type: 'room', id: r.id };
+      }
+    }
+
+    // Check Walls
+    for (const w of walls) {
+      if (w.tracePoints && w.tracePoints.length >= 2) {
+        const dist = distToSegment({ x, y }, w.tracePoints[0], w.tracePoints[1]);
+        if (dist <= 14) {
+          return { type: 'wall', id: w.id };
+        }
+      }
+    }
+
+    // Check Dimensions
+    for (const dim of dimensions) {
+      const dist = distToSegment({ x, y }, dim.p1, dim.p2);
+      if (dist <= 12) {
+        return { type: 'dimension', id: dim.id };
+      }
+    }
+
+    return null;
+  };
+
+  // Delete currently selected element
+  const handleDeleteSelected = () => {
+    if (!selectedElement) return;
+
+    if (selectedElement.type === 'wall') {
+      const updated = walls.filter((w) => w.id !== selectedElement.id);
+      setWalls(updated);
+      pushToHistory({ walls: updated, doors, windows, rooms, dimensions, columns });
+    } else if (selectedElement.type === 'door') {
+      const updated = doors.filter((d) => d.id !== selectedElement.id);
+      setDoors(updated);
+      pushToHistory({ walls, doors: updated, windows, rooms, dimensions, columns });
+    } else if (selectedElement.type === 'window') {
+      const updated = windows.filter((w) => w.id !== selectedElement.id);
+      setWindows(updated);
+      pushToHistory({ walls, doors, windows: updated, rooms, dimensions, columns });
+    } else if (selectedElement.type === 'room') {
+      const updated = rooms.filter((r) => r.id !== selectedElement.id);
+      setRooms(updated);
+      pushToHistory({ walls, doors, windows, rooms: updated, dimensions, columns });
+    } else if (selectedElement.type === 'column') {
+      const updated = columns.filter((c) => c.id !== selectedElement.id);
+      setColumns(updated);
+      pushToHistory({ walls, doors, windows, rooms, dimensions, columns: updated });
+    } else if (selectedElement.type === 'dimension') {
+      const updated = dimensions.filter((d) => d.id !== selectedElement.id);
+      setDimensions(updated);
+      pushToHistory({ walls, doors, windows, rooms, dimensions: updated, columns });
+    }
+
+    setSelectedElement(null);
+  };
+
+  // Keyboard Shortcuts Listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if (e.key === 'v' || e.key === 'V') setActiveTool('select');
+      if (e.key === 'w' || e.key === 'W') setActiveTool('wall');
+      if (e.key === 'r' || e.key === 'R') setActiveTool('room');
+      if (e.key === 'd' || e.key === 'D') setActiveTool('door');
+      if (e.key === 'n' || e.key === 'N') setActiveTool('window');
+      if (e.key === 't' || e.key === 'T') setActiveTool('room_label');
+      if (e.key === 'm' || e.key === 'M') setActiveTool('dimension');
+      if (e.key === 'c' || e.key === 'C') setActiveTool('column');
+      if (e.key === 'h' || e.key === 'H') setActiveTool('pan');
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        handleDeleteSelected();
+      }
+
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      }
+
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+        handleRedo();
+      }
+
+      if (e.key === 'Escape') {
+        setSelectedElement(null);
+        setDrawStart(null);
+        setDrawCurrent(null);
+        setActiveTool('select');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedElement, historyIndex, history]);
 
   // Mouse Down Event Handler
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const coords = getCanvasCoords(e);
 
-    // Middle mouse or Space pan
-    if (e.button === 1 || activeTool === 'select' && e.shiftKey) {
+    // Pan via middle mouse or Pan tool or Space
+    if (e.button === 1 || activeTool === 'pan' || (activeTool === 'select' && e.shiftKey)) {
       setIsPanning(true);
       setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
       return;
@@ -292,34 +603,69 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
 
     if (e.button !== 0) return;
 
+    // SELECT TOOL
+    if (activeTool === 'select') {
+      const found = findElementAtCoords(coords.rawX, coords.rawY);
+      setSelectedElement(found);
+      if (found) {
+        setIsDraggingElement(true);
+        setDragElementStartPos({ x: coords.rawX, y: coords.rawY });
+      }
+      return;
+    }
+
+    // DRAW WALL / ROOM / DIMENSION
     if (activeTool === 'wall' || activeTool === 'room' || activeTool === 'dimension') {
       setDrawStart({ x: coords.x, y: coords.y });
       setDrawCurrent({ x: coords.x, y: coords.y });
       return;
     }
 
+    // PLACE DOOR ON WALL
     if (activeTool === 'door') {
-      // Add door at click location
+      // Find closest wall to attach door to
+      let attachWall: Wall | null = null;
+      let snapPoint = { x: coords.x, y: coords.y };
+
+      for (const w of walls) {
+        if (w.tracePoints && w.tracePoints.length >= 2) {
+          const p1 = w.tracePoints[0];
+          const p2 = w.tracePoints[1];
+          const dist = distToSegment({ x: coords.rawX, y: coords.rawY }, p1, p2);
+          if (dist < 28) {
+            attachWall = w;
+            // Project point onto line
+            const l2 = (p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2;
+            let t = ((coords.rawX - p1.x) * (p2.x - p1.x) + (coords.rawY - p1.y) * (p2.y - p1.y)) / l2;
+            t = Math.max(0.1, Math.min(0.9, t));
+            snapPoint = {
+              x: Math.round(p1.x + t * (p2.x - p1.x)),
+              y: Math.round(p1.y + t * (p2.y - p1.y)),
+            };
+            break;
+          }
+        }
+      }
+
       const newDoor: DesignerDoor = {
         id: `door-${Date.now()}`,
-        x: coords.x,
-        y: coords.y,
+        wallId: attachWall?.id,
+        x: snapPoint.x,
+        y: snapPoint.y,
         widthM: selectedDoorPreset.width,
         heightM: selectedDoorPreset.height,
-        label: selectedDoorPreset.label.split(' ')[0] + ` (${selectedDoorPreset.width}m)`,
+        label: `${selectedDoorPreset.code} (${selectedDoorPreset.width}m)`,
         swingDirection: 'left-in',
       };
 
       const updatedDoors = [...doors, newDoor];
       setDoors(updatedDoors);
 
-      // Add door opening deduction to closest wall
-      const updatedWalls = walls.map((w) => {
-        if (w.tracePoints && w.tracePoints.length >= 2) {
-          const p1 = w.tracePoints[0];
-          const p2 = w.tracePoints[1];
-          const dist = distToSegment({ x: coords.x, y: coords.y }, p1, p2);
-          if (dist < 25) {
+      // Add door deduction to wall
+      let updatedWalls = walls;
+      if (attachWall) {
+        updatedWalls = walls.map((w) => {
+          if (w.id === attachWall!.id) {
             const op: Opening = {
               id: `op-${Date.now()}`,
               type: 'door',
@@ -340,35 +686,57 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
               baseCHB: Math.ceil(net / chbAreaSqM),
             };
           }
-        }
-        return w;
-      });
+          return w;
+        });
+        setWalls(updatedWalls);
+      }
 
-      setWalls(updatedWalls);
       pushToHistory({ walls: updatedWalls, doors: updatedDoors, windows, rooms, dimensions, columns });
+      setSelectedElement({ type: 'door', id: newDoor.id });
       return;
     }
 
+    // PLACE WINDOW ON WALL
     if (activeTool === 'window') {
+      let attachWall: Wall | null = null;
+      let snapPoint = { x: coords.x, y: coords.y };
+
+      for (const w of walls) {
+        if (w.tracePoints && w.tracePoints.length >= 2) {
+          const p1 = w.tracePoints[0];
+          const p2 = w.tracePoints[1];
+          const dist = distToSegment({ x: coords.rawX, y: coords.rawY }, p1, p2);
+          if (dist < 28) {
+            attachWall = w;
+            const l2 = (p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2;
+            let t = ((coords.rawX - p1.x) * (p2.x - p1.x) + (coords.rawY - p1.y) * (p2.y - p1.y)) / l2;
+            t = Math.max(0.1, Math.min(0.9, t));
+            snapPoint = {
+              x: Math.round(p1.x + t * (p2.x - p1.x)),
+              y: Math.round(p1.y + t * (p2.y - p1.y)),
+            };
+            break;
+          }
+        }
+      }
+
       const newWin: DesignerWindow = {
         id: `win-${Date.now()}`,
-        x: coords.x,
-        y: coords.y,
+        wallId: attachWall?.id,
+        x: snapPoint.x,
+        y: snapPoint.y,
         widthM: selectedWindowPreset.width,
         heightM: selectedWindowPreset.height,
-        label: selectedWindowPreset.label.split(' ')[0] + ` (${selectedWindowPreset.width}m)`,
+        label: `${selectedWindowPreset.code} (${selectedWindowPreset.width}m)`,
       };
 
       const updatedWins = [...windows, newWin];
       setWindows(updatedWins);
 
-      // Add window opening deduction to closest wall
-      const updatedWalls = walls.map((w) => {
-        if (w.tracePoints && w.tracePoints.length >= 2) {
-          const p1 = w.tracePoints[0];
-          const p2 = w.tracePoints[1];
-          const dist = distToSegment({ x: coords.x, y: coords.y }, p1, p2);
-          if (dist < 25) {
+      let updatedWalls = walls;
+      if (attachWall) {
+        updatedWalls = walls.map((w) => {
+          if (w.id === attachWall!.id) {
             const op: Opening = {
               id: `op-${Date.now()}`,
               type: 'window',
@@ -389,15 +757,17 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
               baseCHB: Math.ceil(net / chbAreaSqM),
             };
           }
-        }
-        return w;
-      });
+          return w;
+        });
+        setWalls(updatedWalls);
+      }
 
-      setWalls(updatedWalls);
       pushToHistory({ walls: updatedWalls, doors, windows: updatedWins, rooms, dimensions, columns });
+      setSelectedElement({ type: 'window', id: newWin.id });
       return;
     }
 
+    // PLACE ROOM LABEL
     if (activeTool === 'room_label') {
       const newRoom: DesignerRoomLabel = {
         id: `room-${Date.now()}`,
@@ -409,9 +779,11 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       const updatedRooms = [...rooms, newRoom];
       setRooms(updatedRooms);
       pushToHistory({ walls, doors, windows, rooms: updatedRooms, dimensions, columns });
+      setSelectedElement({ type: 'room', id: newRoom.id });
       return;
     }
 
+    // PLACE COLUMN
     if (activeTool === 'column') {
       const newCol: DesignerColumn = {
         id: `col-${Date.now()}`,
@@ -422,6 +794,7 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       const updatedCols = [...columns, newCol];
       setColumns(updatedCols);
       pushToHistory({ walls, doors, windows, rooms, dimensions, columns: updatedCols });
+      setSelectedElement({ type: 'column', id: newCol.id });
       return;
     }
   };
@@ -438,6 +811,20 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
 
     const coords = getCanvasCoords(e);
     setCursorPos({ x: coords.x, y: coords.y });
+    setSnapInfo({ x: coords.x, y: coords.y, type: coords.snapType });
+
+    // Hover detection on walls for door/window placement or highlighting
+    let wallUnderCursor: Wall | null = null;
+    for (const w of walls) {
+      if (w.tracePoints && w.tracePoints.length >= 2) {
+        const dist = distToSegment({ x: coords.rawX, y: coords.rawY }, w.tracePoints[0], w.tracePoints[1]);
+        if (dist <= 20) {
+          wallUnderCursor = w;
+          break;
+        }
+      }
+    }
+    setHoveredWall(wallUnderCursor);
 
     if (drawStart) {
       const orthoPos = applyOrtho(drawStart, { x: coords.x, y: coords.y });
@@ -452,12 +839,17 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       return;
     }
 
+    if (isDraggingElement) {
+      setIsDraggingElement(false);
+      setDragElementStartPos(null);
+    }
+
     if (drawStart && drawCurrent) {
       const dx = drawCurrent.x - drawStart.x;
       const dy = drawCurrent.y - drawStart.y;
-      const pixelDist = Math.sqrt(dx * dx + dy * dy);
+      const pixelDist = Math.hypot(dx, dy);
 
-      if (pixelDist > 10) {
+      if (pixelDist > 12) {
         if (activeTool === 'wall') {
           const lengthMeters = Number((pixelDist / SCALE_PPM).toFixed(2));
           const nextNum = walls.length + 1;
@@ -483,8 +875,8 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
           const updatedWalls = [...walls, newWall];
           setWalls(updatedWalls);
           pushToHistory({ walls: updatedWalls, doors, windows, rooms, dimensions, columns });
+          setSelectedElement({ type: 'wall', id: newWall.id });
         } else if (activeTool === 'room') {
-          // Create 4 connected walls for a rectangular room
           const wM = Number((Math.abs(dx) / SCALE_PPM).toFixed(2));
           const hM = Number((Math.abs(dy) / SCALE_PPM).toFixed(2));
           const x1 = Math.min(drawStart.x, drawCurrent.x);
@@ -563,6 +955,7 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
           setWalls(updatedWalls);
           setRooms(updatedRooms);
           pushToHistory({ walls: updatedWalls, doors, windows, rooms: updatedRooms, dimensions, columns });
+          setSelectedElement({ type: 'room', id: newRoom.id });
         } else if (activeTool === 'dimension') {
           const lengthMeters = Number((pixelDist / SCALE_PPM).toFixed(2));
           const newDim: DesignerDimension = {
@@ -575,6 +968,7 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
           const updatedDims = [...dimensions, newDim];
           setDimensions(updatedDims);
           pushToHistory({ walls, doors, windows, rooms, dimensions: updatedDims, columns });
+          setSelectedElement({ type: 'dimension', id: newDim.id });
         }
       }
 
@@ -587,7 +981,13 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.12 : 0.88;
-    setZoom((z) => Math.max(0.4, Math.min(3.0, Number((z * factor).toFixed(2)))));
+    setZoom((z) => Math.max(0.3, Math.min(3.5, Number((z * factor).toFixed(2)))));
+  };
+
+  // Fit Blueprint to Viewport
+  const handleFitToView = () => {
+    setZoom(1.0);
+    setPan({ x: 0, y: 0 });
   };
 
   // Render Blueprint CAD Canvas
@@ -600,12 +1000,12 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
     const width = canvas.width;
     const height = canvas.height;
 
-    // Palette
+    // Theme setup
     const isBp = blueprintTheme === 'blueprint';
     const isDark = blueprintTheme === 'darkcad';
-    const bgColor = isBp ? '#0c2340' : isDark ? '#0f172a' : '#ffffff';
+    const bgColor = isBp ? '#0c2340' : isDark ? '#0b1329' : '#ffffff';
     const gridMinorColor = isBp ? 'rgba(56, 189, 248, 0.12)' : isDark ? 'rgba(71, 85, 105, 0.25)' : 'rgba(226, 232, 240, 0.8)';
-    const gridMajorColor = isBp ? 'rgba(56, 189, 248, 0.3)' : isDark ? 'rgba(71, 85, 105, 0.5)' : 'rgba(203, 213, 225, 0.9)';
+    const gridMajorColor = isBp ? 'rgba(56, 189, 248, 0.32)' : isDark ? 'rgba(71, 85, 105, 0.55)' : 'rgba(203, 213, 225, 0.9)';
     const wallExtColor = isBp ? '#38bdf8' : isDark ? '#60a5fa' : '#0f172a';
     const wallIntColor = isBp ? '#93c5fd' : isDark ? '#818cf8' : '#334155';
     const textPrimary = isBp ? '#f0f9ff' : isDark ? '#f8fafc' : '#0f172a';
@@ -619,81 +1019,104 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
     ctx.translate(pan.x, pan.y);
     ctx.scale(zoom, zoom);
 
-    // Draw Dynamic Grid
-    const snapPx = gridSnapMeters * SCALE_PPM;
-    const majorPx = snapPx * 4; // Every 2 meters
+    // Draw Dynamic Architectural Grid
+    const snapPx = (gridSnapMeters > 0 ? gridSnapMeters : 0.5) * SCALE_PPM;
+    const majorPx = snapPx * 4; // Every 2.0 meters
 
     ctx.lineWidth = 0.5;
     ctx.strokeStyle = gridMinorColor;
-    for (let x = -2000; x <= 4000; x += snapPx) {
+    for (let x = -3000; x <= 5000; x += snapPx) {
       ctx.beginPath();
-      ctx.moveTo(x, -2000);
-      ctx.lineTo(x, 4000);
+      ctx.moveTo(x, -3000);
+      ctx.lineTo(x, 5000);
       ctx.stroke();
     }
-    for (let y = -2000; y <= 4000; y += snapPx) {
+    for (let y = -3000; y <= 5000; y += snapPx) {
       ctx.beginPath();
-      ctx.moveTo(-2000, y);
-      ctx.lineTo(4000, y);
+      ctx.moveTo(-3000, y);
+      ctx.lineTo(5000, y);
       ctx.stroke();
     }
 
     ctx.lineWidth = 1;
     ctx.strokeStyle = gridMajorColor;
-    for (let x = -2000; x <= 4000; x += majorPx) {
+    for (let x = -3000; x <= 5000; x += majorPx) {
       ctx.beginPath();
-      ctx.moveTo(x, -2000);
-      ctx.lineTo(x, 4000);
+      ctx.moveTo(x, -3000);
+      ctx.lineTo(x, 5000);
       ctx.stroke();
     }
-    for (let y = -2000; y <= 4000; y += majorPx) {
+    for (let y = -3000; y <= 5000; y += majorPx) {
       ctx.beginPath();
-      ctx.moveTo(-2000, y);
-      ctx.lineTo(4000, y);
+      ctx.moveTo(-3000, y);
+      ctx.lineTo(5000, y);
       ctx.stroke();
     }
 
     // Origin Axes Indicator (0,0)
-    ctx.strokeStyle = isBp ? 'rgba(56, 189, 248, 0.6)' : '#94a3b8';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = isBp ? 'rgba(56, 189, 248, 0.7)' : '#38bdf8';
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(0, -20);
-    ctx.lineTo(0, 20);
-    ctx.moveTo(-20, 0);
-    ctx.lineTo(20, 0);
+    ctx.moveTo(0, -30);
+    ctx.lineTo(0, 30);
+    ctx.moveTo(-30, 0);
+    ctx.lineTo(30, 0);
     ctx.stroke();
 
-    // 1. Draw Rooms
+    // 1. Draw Rooms (Background shade & labels)
     rooms.forEach((r) => {
+      const isSelected = selectedElement?.type === 'room' && selectedElement.id === r.id;
+
       if (r.widthM && r.heightM) {
-        ctx.fillStyle = isBp ? 'rgba(56, 189, 248, 0.05)' : isDark ? 'rgba(96, 165, 250, 0.06)' : 'rgba(241, 245, 249, 0.7)';
+        ctx.fillStyle = isSelected
+          ? 'rgba(56, 189, 248, 0.18)'
+          : isBp
+          ? 'rgba(56, 189, 248, 0.06)'
+          : isDark
+          ? 'rgba(96, 165, 250, 0.08)'
+          : 'rgba(241, 245, 249, 0.8)';
         ctx.fillRect(
           r.x - (r.widthM * SCALE_PPM) / 2,
           r.y - (r.heightM * SCALE_PPM) / 2,
           r.widthM * SCALE_PPM,
           r.heightM * SCALE_PPM
         );
+
+        if (isSelected) {
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([4, 4]);
+          ctx.strokeRect(
+            r.x - (r.widthM * SCALE_PPM) / 2,
+            r.y - (r.heightM * SCALE_PPM) / 2,
+            r.widthM * SCALE_PPM,
+            r.heightM * SCALE_PPM
+          );
+          ctx.setLineDash([]);
+        }
       }
 
+      // Room Title Badge
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.font = 'bold 12px "Courier New", monospace, sans-serif';
-      ctx.fillStyle = textPrimary;
+      ctx.fillStyle = isSelected ? '#38bdf8' : textPrimary;
       ctx.fillText(r.name, r.x, r.y - 6);
 
       if (r.customArea) {
-        ctx.font = '10px monospace, sans-serif';
-        ctx.fillStyle = textSecondary;
-        ctx.fillText(`${r.customArea.toFixed(1)} m²`, r.x, r.y + 8);
+        ctx.font = 'bold 10px monospace, sans-serif';
+        ctx.fillStyle = isSelected ? '#7dd3fc' : textSecondary;
+        ctx.fillText(`${r.customArea.toFixed(1)} m²`, r.x, r.y + 9);
       }
     });
 
     // 2. Draw Columns
     columns.forEach((c) => {
+      const isSelected = selectedElement?.type === 'column' && selectedElement.id === c.id;
       const size = c.sizeM * SCALE_PPM;
-      ctx.fillStyle = isBp ? '#0284c7' : isDark ? '#3b82f6' : '#1e293b';
-      ctx.strokeStyle = textPrimary;
-      ctx.lineWidth = 1.5;
+      ctx.fillStyle = isSelected ? '#e11d48' : isBp ? '#0284c7' : isDark ? '#3b82f6' : '#1e293b';
+      ctx.strokeStyle = isSelected ? '#fb7185' : textPrimary;
+      ctx.lineWidth = isSelected ? 2.5 : 1.5;
       ctx.fillRect(c.x - size / 2, c.y - size / 2, size, size);
       ctx.strokeRect(c.x - size / 2, c.y - size / 2, size, size);
 
@@ -710,11 +1133,19 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       if (!w.tracePoints || w.tracePoints.length < 2) return;
       const p1 = w.tracePoints[0];
       const p2 = w.tracePoints[1];
+      const isSelected = selectedElement?.type === 'wall' && selectedElement.id === w.id;
+      const isHovered = hoveredWall?.id === w.id;
       const isExt = w.type === 'Exterior Wall' || w.type === 'Firewall' || w.type === 'Perimeter / Fence';
-      const wallThickness = isExt ? 8 : 5;
+      const wallThickness = isExt ? 9 : 6;
 
-      ctx.strokeStyle = isExt ? wallExtColor : wallIntColor;
-      ctx.lineWidth = wallThickness;
+      ctx.strokeStyle = isSelected
+        ? '#f59e0b'
+        : isHovered
+        ? '#10b981'
+        : isExt
+        ? wallExtColor
+        : wallIntColor;
+      ctx.lineWidth = isSelected || isHovered ? wallThickness + 2 : wallThickness;
       ctx.lineCap = 'square';
 
       ctx.beginPath();
@@ -722,60 +1153,76 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       ctx.lineTo(p2.x, p2.y);
       ctx.stroke();
 
-      // Wall midpoint label
+      // Draw Wall Corners (Endpoints)
+      ctx.fillStyle = isSelected ? '#f59e0b' : isExt ? wallExtColor : wallIntColor;
+      ctx.fillRect(p1.x - 4, p1.y - 4, 8, 8);
+      ctx.fillRect(p2.x - 4, p2.y - 4, 8, 8);
+
+      // Wall Midpoint Tag
       const midX = (p1.x + p2.x) / 2;
       const midY = (p1.y + p2.y) / 2;
 
-      ctx.fillStyle = isBp ? '#0369a1' : isDark ? '#1e293b' : '#f8fafc';
-      ctx.strokeStyle = isExt ? wallExtColor : wallIntColor;
+      ctx.fillStyle = isSelected
+        ? '#78350f'
+        : isBp
+        ? '#0369a1'
+        : isDark
+        ? '#1e293b'
+        : '#f8fafc';
+      ctx.strokeStyle = isSelected ? '#f59e0b' : isExt ? wallExtColor : wallIntColor;
       ctx.lineWidth = 1;
-      ctx.fillRect(midX - 22, midY - 9, 44, 18);
-      ctx.strokeRect(midX - 22, midY - 9, 44, 18);
+      ctx.fillRect(midX - 25, midY - 9, 50, 18);
+      ctx.strokeRect(midX - 25, midY - 9, 50, 18);
 
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.font = 'bold 9px monospace';
-      ctx.fillStyle = textPrimary;
+      ctx.fillStyle = isSelected ? '#fef3c7' : textPrimary;
       ctx.fillText(`${w.id} ${w.length.toFixed(1)}m`, midX, midY);
     });
 
     // 4. Draw Windows
     windows.forEach((win) => {
+      const isSelected = selectedElement?.type === 'window' && selectedElement.id === win.id;
       const width = win.widthM * SCALE_PPM;
+
       ctx.fillStyle = bgColor;
-      ctx.fillRect(win.x - width / 2, win.y - 4, width, 8);
+      ctx.fillRect(win.x - width / 2, win.y - 5, width, 10);
 
-      ctx.strokeStyle = isBp ? '#38bdf8' : '#0284c7';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(win.x - width / 2, win.y - 4, width, 8);
+      ctx.strokeStyle = isSelected ? '#f59e0b' : isBp ? '#38bdf8' : '#0284c7';
+      ctx.lineWidth = isSelected ? 2.5 : 1.5;
+      ctx.strokeRect(win.x - width / 2, win.y - 5, width, 10);
 
+      // Window glass lines
       ctx.beginPath();
       ctx.moveTo(win.x - width / 2, win.y);
       ctx.lineTo(win.x + width / 2, win.y);
       ctx.stroke();
 
-      ctx.font = '8px monospace';
-      ctx.fillStyle = textSecondary;
+      ctx.font = 'bold 8px monospace';
+      ctx.fillStyle = isSelected ? '#f59e0b' : textSecondary;
       ctx.textAlign = 'center';
-      ctx.fillText(win.label || 'WIN', win.x, win.y - 7);
+      ctx.fillText(win.label || 'WIN', win.x, win.y - 8);
     });
 
     // 5. Draw Doors
     doors.forEach((door) => {
+      const isSelected = selectedElement?.type === 'door' && selectedElement.id === door.id;
       const width = door.widthM * SCALE_PPM;
+
       ctx.fillStyle = bgColor;
-      ctx.fillRect(door.x - width / 2, door.y - 5, width, 10);
+      ctx.fillRect(door.x - width / 2, door.y - 6, width, 12);
 
       // Door Leaf
-      ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = isSelected ? '#38bdf8' : '#f59e0b';
+      ctx.lineWidth = isSelected ? 3 : 2;
       ctx.beginPath();
       ctx.moveTo(door.x - width / 2, door.y);
       ctx.lineTo(door.x - width / 2, door.y - width);
       ctx.stroke();
 
       // Swing Arc
-      ctx.strokeStyle = 'rgba(245, 158, 11, 0.6)';
+      ctx.strokeStyle = isSelected ? 'rgba(56, 189, 248, 0.8)' : 'rgba(245, 158, 11, 0.6)';
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
       ctx.beginPath();
@@ -783,23 +1230,25 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       ctx.stroke();
       ctx.setLineDash([]);
 
-      ctx.font = '8px monospace';
-      ctx.fillStyle = textSecondary;
+      ctx.font = 'bold 8px monospace';
+      ctx.fillStyle = isSelected ? '#38bdf8' : textSecondary;
       ctx.textAlign = 'center';
-      ctx.fillText(door.label || 'DOOR', door.x, door.y + 14);
+      ctx.fillText(door.label || 'DOOR', door.x, door.y + 15);
     });
 
     // 6. Draw Dimensions
     dimensions.forEach((dim) => {
-      ctx.strokeStyle = '#facc15';
-      ctx.lineWidth = 1.5;
+      const isSelected = selectedElement?.type === 'dimension' && selectedElement.id === dim.id;
+      ctx.strokeStyle = isSelected ? '#38bdf8' : '#facc15';
+      ctx.lineWidth = isSelected ? 2.5 : 1.5;
 
       ctx.beginPath();
       ctx.moveTo(dim.p1.x, dim.p1.y);
       ctx.lineTo(dim.p2.x, dim.p2.y);
       ctx.stroke();
 
-      const tick = 5;
+      // Slashes
+      const tick = 6;
       ctx.beginPath();
       ctx.moveTo(dim.p1.x - tick, dim.p1.y + tick);
       ctx.lineTo(dim.p1.x + tick, dim.p1.y - tick);
@@ -810,10 +1259,10 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       const midX = (dim.p1.x + dim.p2.x) / 2;
       const midY = (dim.p1.y + dim.p2.y) / 2;
       ctx.font = 'bold 10px monospace';
-      ctx.fillStyle = '#facc15';
+      ctx.fillStyle = isSelected ? '#38bdf8' : '#facc15';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
-      ctx.fillText(dim.label, midX, midY - 2);
+      ctx.fillText(dim.label, midX, midY - 3);
     });
 
     // 7. Active Drawing Preview Line / Box
@@ -829,12 +1278,12 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
 
         const dx = drawCurrent.x - drawStart.x;
         const dy = drawCurrent.y - drawStart.y;
-        const liveMeters = (Math.sqrt(dx * dx + dy * dy) / SCALE_PPM).toFixed(2);
+        const liveMeters = (Math.hypot(dx, dy) / SCALE_PPM).toFixed(2);
 
         ctx.fillStyle = '#10b981';
         ctx.font = 'bold 11px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(`${liveMeters} m`, (drawStart.x + drawCurrent.x) / 2, (drawStart.y + drawCurrent.y) / 2 - 8);
+        ctx.fillText(`${liveMeters} m`, (drawStart.x + drawCurrent.x) / 2, (drawStart.y + drawCurrent.y) / 2 - 10);
       } else if (activeTool === 'room') {
         const x = Math.min(drawStart.x, drawCurrent.x);
         const y = Math.min(drawStart.y, drawCurrent.y);
@@ -856,6 +1305,36 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       }
     }
 
+    // 8. Magnetic Snap Indicator
+    if (snapInfo && (activeTool === 'wall' || activeTool === 'room' || activeTool === 'dimension')) {
+      if (snapInfo.type === 'corner') {
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(snapInfo.x, snapInfo.y, 8, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#10b981';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('● Corner Snap', snapInfo.x + 12, snapInfo.y + 3);
+      } else if (snapInfo.type === 'midpoint') {
+        ctx.strokeStyle = '#06b6d4';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(snapInfo.x, snapInfo.y - 7);
+        ctx.lineTo(snapInfo.x + 7, snapInfo.y + 5);
+        ctx.lineTo(snapInfo.x - 7, snapInfo.y + 5);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.fillStyle = '#06b6d4';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('▲ Midpoint Snap', snapInfo.x + 12, snapInfo.y + 3);
+      }
+    }
+
     ctx.restore();
   }, [
     walls,
@@ -871,6 +1350,9 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
     gridSnapMeters,
     pan,
     zoom,
+    selectedElement,
+    snapInfo,
+    hoveredWall,
   ]);
 
   // Derived Totals
@@ -881,6 +1363,13 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
   const baseCHBTotal = Math.ceil(totalNetArea / chbAreaSqM);
   const finalCHBWithWaste = Math.ceil(baseCHBTotal * (1 + wastePercentage / 100));
   const estimatedFloorArea = rooms.reduce((sum, r) => sum + (r.customArea || 0), 0) || 72.0;
+
+  // Find currently selected element object
+  const activeSelectedWall = selectedElement?.type === 'wall' ? walls.find((w) => w.id === selectedElement.id) : null;
+  const activeSelectedDoor = selectedElement?.type === 'door' ? doors.find((d) => d.id === selectedElement.id) : null;
+  const activeSelectedWin = selectedElement?.type === 'window' ? windows.find((w) => w.id === selectedElement.id) : null;
+  const activeSelectedRoom = selectedElement?.type === 'room' ? rooms.find((r) => r.id === selectedElement.id) : null;
+  const activeSelectedCol = selectedElement?.type === 'column' ? columns.find((c) => c.id === selectedElement.id) : null;
 
   // Apply to Main App
   const handleApplyToProject = () => {
@@ -895,7 +1384,7 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
     onClose();
   };
 
-  // Download high-res PNG image of the created blueprint
+  // Download high-res PNG image
   const handleDownloadBlueprintImage = () => {
     const dataUrl = generateBlueprintDataUrl(
       { walls, doors, windows, rooms, dimensions, columns },
@@ -913,14 +1402,14 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 animate-fade-in">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-7xl h-[94vh] flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-50 flex items-center justify-center p-2 sm:p-4 animate-fade-in font-sans">
+      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-7xl h-[95vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Top Header Bar */}
-        <div className="bg-slate-950 border-b border-slate-800 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <header className="bg-slate-950 border-b border-slate-800 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
           {/* Title & Presets */}
           <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-cyan-600 text-white font-bold">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 text-white flex items-center justify-center shadow-md shadow-cyan-950">
                 <PenTool className="w-4 h-4" />
               </div>
               <div>
@@ -929,10 +1418,12 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
                   value={planTitle}
                   onChange={(e) => setPlanTitle(e.target.value)}
                   className="bg-transparent border-b border-transparent hover:border-slate-600 focus:border-cyan-500 text-sm font-bold text-slate-100 focus:outline-none px-1 py-0.5"
-                  title="Click to rename blueprint"
+                  title="Click to rename blueprint project"
                 />
-                <div className="text-[10px] text-slate-400 font-mono">
-                  In-App Architectural Blueprint CAD Studio • 1m = {SCALE_PPM}px
+                <div className="text-[10px] text-slate-400 font-mono flex items-center gap-2">
+                  <span>Architectural Blueprint CAD Studio</span>
+                  <span>•</span>
+                  <span>1m = {SCALE_PPM}px</span>
                 </div>
               </div>
             </div>
@@ -945,9 +1436,10 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
                   key={p.id}
                   type="button"
                   onClick={() => handleLoadPreset(p)}
-                  className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/80 transition-all hover:text-white"
+                  title={p.description}
                 >
-                  {p.name.split(' ')[0]}
+                  {p.name.split(' ')[0]} <span className="text-[9px] text-cyan-400 font-mono">({p.floorArea}m²)</span>
                 </button>
               ))}
             </div>
@@ -957,317 +1449,876 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => setShowShortcutsModal(true)}
+              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+              title="Keyboard Shortcuts Cheat Sheet"
+            >
+              <HelpCircle className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
               onClick={handleDownloadBlueprintImage}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs border border-slate-700 transition-colors"
-              title="Download high-resolution architectural blueprint PNG"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs border border-slate-700 transition-colors"
+              title="Export high-resolution blueprint PNG"
             >
               <Download className="w-3.5 h-3.5 text-cyan-400" />
-              Download Plan
+              <span className="hidden sm:inline">Export PNG</span>
             </button>
 
             <button
               id="btn-apply-designer-blueprint"
               type="button"
               onClick={handleApplyToProject}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs shadow-md shadow-cyan-950 transition-all"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs shadow-md shadow-cyan-950 transition-all"
             >
               <CheckCircle2 className="w-4 h-4" />
-              Use as Project Blueprint
+              <span>Apply to Project</span>
             </button>
 
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
-        </div>
+        </header>
 
-        {/* Secondary CAD Toolbar */}
-        <div className="bg-slate-900 border-b border-slate-800 px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs">
-          {/* Main Drawing Tools */}
-          <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 rounded-xl p-1">
-            <button
-              type="button"
-              onClick={() => setActiveTool('wall')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium text-xs transition-colors ${
-                activeTool === 'wall'
-                  ? 'bg-cyan-600 text-white font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-              }`}
-            >
-              <PenTool className="w-3.5 h-3.5" />
-              Draw Wall
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTool('room')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium text-xs transition-colors ${
-                activeTool === 'room'
-                  ? 'bg-cyan-600 text-white font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-              }`}
-            >
-              <Square className="w-3.5 h-3.5" />
-              Draw Room (Box)
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTool('door')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium text-xs transition-colors ${
-                activeTool === 'door'
-                  ? 'bg-amber-600 text-white font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-              }`}
-            >
-              <DoorOpen className="w-3.5 h-3.5" />
-              Add Door
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTool('window')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium text-xs transition-colors ${
-                activeTool === 'window'
-                  ? 'bg-blue-600 text-white font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              Add Window
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTool('room_label')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium text-xs transition-colors ${
-                activeTool === 'room_label'
-                  ? 'bg-emerald-600 text-white font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-              }`}
-            >
-              <Compass className="w-3.5 h-3.5" />
-              Room Stamp
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTool('dimension')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium text-xs transition-colors ${
-                activeTool === 'dimension'
-                  ? 'bg-yellow-600 text-white font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-              }`}
-            >
-              <Ruler className="w-3.5 h-3.5" />
-              Dimension Line
-            </button>
-          </div>
-
-          {/* Active Tool Modifier Sub-Controls */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {activeTool === 'wall' && (
-              <div className="flex items-center gap-2 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
-                <span className="text-slate-400 text-[11px]">Wall Type:</span>
-                <select
-                  value={currentWallType}
-                  onChange={(e) => setCurrentWallType(e.target.value as WallType)}
-                  className="bg-slate-900 text-slate-100 text-xs px-2 py-0.5 rounded border border-slate-700 font-medium"
+        {/* CAD Studio Core Body */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Main Drawing Viewport & Floating Ribbon */}
+          <div className="relative flex-1 bg-slate-950 overflow-hidden flex flex-col select-none">
+            {/* Top Floating CAD Tool Ribbon */}
+            <div className="absolute top-3 left-4 right-4 z-20 flex items-center justify-between pointer-events-none gap-2">
+              {/* Primary Drawing Tool Switcher */}
+              <div className="pointer-events-auto flex items-center gap-1 bg-slate-900/90 backdrop-blur-md border border-slate-800 p-1.5 rounded-2xl shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => setActiveTool('select')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
+                    activeTool === 'select'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
+                  title="Select & Move (V)"
                 >
-                  <option value="Exterior Wall">Exterior Wall (150mm)</option>
-                  <option value="Interior Wall">Interior Wall (100mm)</option>
-                  <option value="Partition Wall">Partition Wall (100mm)</option>
-                  <option value="Perimeter / Fence">Perimeter Fence</option>
-                  <option value="Firewall">Firewall (150mm)</option>
+                  <MousePointer2 className="w-3.5 h-3.5" />
+                  <span>Select</span>
+                  <kbd className="text-[9px] bg-slate-950/60 px-1 rounded text-slate-300">V</kbd>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTool('wall')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
+                    activeTool === 'wall'
+                      ? 'bg-cyan-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
+                  title="Draw Wall (W)"
+                >
+                  <PenTool className="w-3.5 h-3.5" />
+                  <span>Wall</span>
+                  <kbd className="text-[9px] bg-slate-950/60 px-1 rounded text-slate-300">W</kbd>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTool('room')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
+                    activeTool === 'room'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
+                  title="Draw Room Box (R)"
+                >
+                  <Square className="w-3.5 h-3.5" />
+                  <span>Room</span>
+                  <kbd className="text-[9px] bg-slate-950/60 px-1 rounded text-slate-300">R</kbd>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTool('door')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
+                    activeTool === 'door'
+                      ? 'bg-amber-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
+                  title="Add Door (D)"
+                >
+                  <DoorOpen className="w-3.5 h-3.5" />
+                  <span>Door</span>
+                  <kbd className="text-[9px] bg-slate-950/60 px-1 rounded text-slate-300">D</kbd>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTool('window')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
+                    activeTool === 'window'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
+                  title="Add Window (N)"
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Window</span>
+                  <kbd className="text-[9px] bg-slate-950/60 px-1 rounded text-slate-300">N</kbd>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTool('column')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
+                    activeTool === 'column'
+                      ? 'bg-rose-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
+                  title="Add RC Column (C)"
+                >
+                  <Columns className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Column</span>
+                  <kbd className="text-[9px] bg-slate-950/60 px-1 rounded text-slate-300">C</kbd>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTool('room_label')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
+                    activeTool === 'room_label'
+                      ? 'bg-teal-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
+                  title="Room Stamp Tag (T)"
+                >
+                  <Tag className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Stamp</span>
+                  <kbd className="text-[9px] bg-slate-950/60 px-1 rounded text-slate-300">T</kbd>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTool('dimension')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
+                    activeTool === 'dimension'
+                      ? 'bg-yellow-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
+                  title="Dimension Line (M)"
+                >
+                  <Ruler className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">Dimension</span>
+                  <kbd className="text-[9px] bg-slate-950/60 px-1 rounded text-slate-300">M</kbd>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTool('pan')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
+                    activeTool === 'pan'
+                      ? 'bg-slate-700 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
+                  title="Pan Viewport (H)"
+                >
+                  <Hand className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">Pan</span>
+                  <kbd className="text-[9px] bg-slate-950/60 px-1 rounded text-slate-300">H</kbd>
+                </button>
+              </div>
+
+              {/* Undo / Redo & Snap Controls */}
+              <div className="pointer-events-auto flex items-center gap-1.5 bg-slate-900/90 backdrop-blur-md border border-slate-800 p-1.5 rounded-2xl shadow-xl">
+                <button
+                  type="button"
+                  onClick={handleUndo}
+                  disabled={historyIndex <= 0}
+                  className="p-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                  title="Undo (Ctrl+Z)"
+                >
+                  <Undo2 className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleRedo}
+                  disabled={historyIndex >= history.length - 1}
+                  className="p-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                  title="Redo (Ctrl+Y)"
+                >
+                  <Redo2 className="w-4 h-4" />
+                </button>
+
+                <div className="h-4 w-px bg-slate-800 mx-0.5" />
+
+                {/* Ortho Lock */}
+                <button
+                  type="button"
+                  onClick={() => setIsOrthoLocked(!isOrthoLocked)}
+                  className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all ${
+                    isOrthoLocked
+                      ? 'bg-cyan-950 text-cyan-300 border border-cyan-700/80'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Lock Angle to 90° Angles (Ortho)"
+                >
+                  Ortho {isOrthoLocked ? 'ON' : 'OFF'}
+                </button>
+
+                {/* Magnetic Snap Toggle */}
+                <button
+                  type="button"
+                  onClick={() => setMagneticVertexSnap(!magneticVertexSnap)}
+                  className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all ${
+                    magneticVertexSnap
+                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-700/80'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Magnetic Wall Corner & Midpoint Snap"
+                >
+                  Snap {magneticVertexSnap ? 'ON' : 'OFF'}
+                </button>
+
+                {/* Grid Snap selector */}
+                <select
+                  value={gridSnapMeters}
+                  onChange={(e) => setGridSnapMeters(parseFloat(e.target.value))}
+                  className="bg-slate-950 text-slate-300 text-[11px] font-mono px-2 py-1 rounded-xl border border-slate-800 focus:outline-none"
+                  title="Grid Snap Interval"
+                >
+                  <option value="0.25">0.25m</option>
+                  <option value="0.5">0.50m</option>
+                  <option value="1.0">1.00m</option>
+                  <option value="0">Free</option>
                 </select>
 
-                <span className="text-slate-400 text-[11px] ml-1">Height:</span>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="1"
-                  max="10"
-                  value={currentWallHeight}
-                  onChange={(e) => setCurrentWallHeight(parseFloat(e.target.value) || 3.0)}
-                  className="w-14 bg-slate-900 text-slate-100 text-xs px-1.5 py-0.5 rounded border border-slate-700 font-mono text-center"
-                />
-                <span className="text-slate-400 text-[11px]">m</span>
-              </div>
-            )}
-
-            {activeTool === 'door' && (
-              <div className="flex items-center gap-2 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
-                <span className="text-slate-400 text-[11px]">Door Size:</span>
+                {/* Theme Selector */}
                 <select
-                  value={selectedDoorPreset.label}
-                  onChange={(e) => {
-                    const found = DOOR_PRESETS.find((p) => p.label === e.target.value);
-                    if (found) setSelectedDoorPreset(found);
-                  }}
-                  className="bg-slate-900 text-slate-100 text-xs px-2 py-0.5 rounded border border-slate-700"
+                  value={blueprintTheme}
+                  onChange={(e) => setBlueprintTheme(e.target.value as ThemeMode)}
+                  className="bg-slate-950 text-slate-300 text-[11px] px-2 py-1 rounded-xl border border-slate-800 focus:outline-none"
                 >
-                  {DOOR_PRESETS.map((dp) => (
-                    <option key={dp.label} value={dp.label}>
-                      {dp.label}
-                    </option>
-                  ))}
+                  <option value="blueprint">Classic Blue</option>
+                  <option value="darkcad">Dark CAD</option>
+                  <option value="monochrome">White Print</option>
                 </select>
-              </div>
-            )}
 
-            {activeTool === 'window' && (
-              <div className="flex items-center gap-2 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
-                <span className="text-slate-400 text-[11px]">Window Size:</span>
-                <select
-                  value={selectedWindowPreset.label}
-                  onChange={(e) => {
-                    const found = WINDOW_PRESETS.find((p) => p.label === e.target.value);
-                    if (found) setSelectedWindowPreset(found);
-                  }}
-                  className="bg-slate-900 text-slate-100 text-xs px-2 py-0.5 rounded border border-slate-700"
+                {/* Clear Canvas */}
+                <button
+                  type="button"
+                  onClick={handleClearCanvas}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 transition-colors"
+                  title="Clear All Elements"
                 >
-                  {WINDOW_PRESETS.map((wp) => (
-                    <option key={wp.label} value={wp.label}>
-                      {wp.label}
-                    </option>
-                  ))}
-                </select>
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
-            )}
+            </div>
 
-            {activeTool === 'room_label' && (
-              <div className="flex items-center gap-2 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
-                <span className="text-slate-400 text-[11px]">Room Label:</span>
-                <select
-                  value={selectedRoomName}
-                  onChange={(e) => setSelectedRoomName(e.target.value)}
-                  className="bg-slate-900 text-slate-100 text-xs px-2 py-0.5 rounded border border-slate-700"
-                >
-                  {ROOM_NAMES.map((rn) => (
-                    <option key={rn} value={rn}>
-                      {rn}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Grid Snap & Ortho Toggle */}
-            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
-              <button
-                type="button"
-                onClick={() => setIsOrthoLocked(!isOrthoLocked)}
-                className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
-                  isOrthoLocked
-                    ? 'bg-cyan-900/60 text-cyan-300 border border-cyan-700'
-                    : 'text-slate-400 hover:text-slate-200'
+            {/* Interactive Canvas Element */}
+            <div className="relative flex-1 w-full h-full flex items-center justify-center">
+              <canvas
+                ref={canvasRef}
+                width={1400}
+                height={800}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onWheel={handleWheel}
+                className={`w-full h-full block ${
+                  activeTool === 'pan' || isPanning
+                    ? 'cursor-grab active:cursor-grabbing'
+                    : activeTool === 'select'
+                    ? 'cursor-default'
+                    : 'cursor-crosshair'
                 }`}
-                title="Toggle Orthogonal 90-degree Lock"
-              >
-                Ortho {isOrthoLocked ? 'ON' : 'OFF'}
-              </button>
+              />
 
-              <select
-                value={gridSnapMeters}
-                onChange={(e) => setGridSnapMeters(parseFloat(e.target.value))}
-                className="bg-slate-900 text-slate-300 text-[11px] px-1.5 py-0.5 rounded border border-slate-700"
-                title="Grid Snap interval"
-              >
-                <option value="0.25">Snap 0.25m</option>
-                <option value="0.5">Snap 0.50m</option>
-                <option value="1.0">Snap 1.00m</option>
-                <option value="0">No Snap</option>
-              </select>
+              {/* Floating Bottom-Left Zoom & Fit Bar */}
+              <div className="absolute bottom-4 left-4 z-20 flex items-center gap-1.5 bg-slate-900/90 backdrop-blur-md border border-slate-800 p-1 rounded-2xl shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => setZoom((z) => Math.max(0.3, Number((z * 0.85).toFixed(2))))}
+                  className="p-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800"
+                  title="Zoom Out (-)"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </button>
 
-              {/* Theme Picker */}
-              <select
-                value={blueprintTheme}
-                onChange={(e) => setBlueprintTheme(e.target.value as ThemeMode)}
-                className="bg-slate-900 text-slate-300 text-[11px] px-1.5 py-0.5 rounded border border-slate-700"
-              >
-                <option value="blueprint">Classic Blue</option>
-                <option value="darkcad">Dark CAD</option>
-                <option value="monochrome">White Blueprint</option>
-              </select>
+                <span className="text-[11px] font-mono font-bold text-slate-300 px-2 min-w-[46px] text-center">
+                  {Math.round(zoom * 100)}%
+                </span>
 
-              {/* Clear */}
-              <button
-                type="button"
-                onClick={handleClearCanvas}
-                className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-950/40"
-                title="Clear Blueprint"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setZoom((z) => Math.min(3.5, Number((z * 1.18).toFixed(2))))}
+                  className="p-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800"
+                  title="Zoom In (+)"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleFitToView}
+                  className="p-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800"
+                  title="Reset & Fit to View (100%)"
+                >
+                  <Maximize className="w-4 h-4" />
+                </button>
+
+                <div className="h-4 w-px bg-slate-800 mx-0.5" />
+
+                <div className="text-[10px] font-mono text-cyan-300 px-2">
+                  X: {(cursorPos.x / SCALE_PPM).toFixed(2)}m | Y: {(cursorPos.y / SCALE_PPM).toFixed(2)}m
+                </div>
+              </div>
+
+              {/* Active Drawing Tool Guide Toast */}
+              <div className="absolute bottom-4 right-4 z-20 pointer-events-none bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-2xl px-3.5 py-2 text-xs text-slate-300 shadow-xl flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-cyan-400" />
+                <span>
+                  {activeTool === 'select' && 'Select mode: Click any element to inspect, drag, or delete with Backspace.'}
+                  {activeTool === 'wall' && 'Click & drag on the grid to create masonry walls with corner snapping.'}
+                  {activeTool === 'room' && 'Drag diagonally to build a complete 4-wall room and calculate m² floor area.'}
+                  {activeTool === 'door' && 'Click any wall segment to install a door with opening deduction.'}
+                  {activeTool === 'window' && 'Click any wall segment to drop a window opening and deduct CHB.'}
+                  {activeTool === 'column' && 'Click any grid point to install an RC structural column.'}
+                  {activeTool === 'room_label' && 'Click inside any room area to drop an architectural label.'}
+                  {activeTool === 'dimension' && 'Click and drag to measure and place metric dimension markers.'}
+                  {activeTool === 'pan' && 'Click and drag anywhere to pan across the blueprint drawing grid.'}
+                </span>
+              </div>
             </div>
           </div>
+
+          {/* Right Sidebar: Inspector, Room Library & Schedules */}
+          <aside className="w-80 sm:w-96 bg-slate-950 border-l border-slate-800 flex flex-col z-20">
+            {/* Sidebar Tab Header */}
+            <div className="flex items-center border-b border-slate-800 p-2 gap-1 bg-slate-900/60">
+              <button
+                type="button"
+                onClick={() => setSidebarTab('inspector')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  sidebarTab === 'inspector'
+                    ? 'bg-slate-800 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                }`}
+              >
+                <Sliders className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Inspector</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSidebarTab('templates')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  sidebarTab === 'templates'
+                    ? 'bg-slate-800 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Room Library</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSidebarTab('schedule')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  sidebarTab === 'schedule'
+                    ? 'bg-slate-800 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                }`}
+              >
+                <ListTree className="w-3.5 h-3.5 text-amber-400" />
+                <span>Takeoff ({walls.length})</span>
+              </button>
+            </div>
+
+            {/* Tab 1: INSPECTOR & ACTIVE TOOL SETTINGS */}
+            {sidebarTab === 'inspector' && (
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+                {/* 1. If an element is selected */}
+                {selectedElement ? (
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-md bg-indigo-950 text-indigo-300 font-bold uppercase text-[10px]">
+                          {selectedElement.type}
+                        </span>
+                        <span className="font-bold text-slate-100 font-mono">{selectedElement.id}</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleDeleteSelected}
+                        className="p-1.5 rounded-lg text-rose-400 hover:text-white hover:bg-rose-900/60 transition-colors"
+                        title="Delete Element (Backspace)"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Wall Properties */}
+                    {activeSelectedWall && (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-slate-400 block text-[11px] mb-1">Wall Name / ID:</label>
+                          <input
+                            type="text"
+                            value={activeSelectedWall.name}
+                            onChange={(e) => {
+                              const updated = walls.map((w) =>
+                                w.id === activeSelectedWall.id ? { ...w, name: e.target.value } : w
+                              );
+                              setWalls(updated);
+                            }}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-slate-100 font-medium"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-slate-400 block text-[11px] mb-1">Type:</label>
+                            <select
+                              value={activeSelectedWall.type}
+                              onChange={(e) => {
+                                const newType = e.target.value as WallType;
+                                const updated = walls.map((w) =>
+                                  w.id === activeSelectedWall.id ? { ...w, type: newType } : w
+                                );
+                                setWalls(updated);
+                              }}
+                              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2 py-1.5 text-slate-200"
+                            >
+                              <option value="Exterior Wall">Exterior 150mm</option>
+                              <option value="Interior Wall">Interior 100mm</option>
+                              <option value="Partition Wall">Partition 100mm</option>
+                              <option value="Perimeter / Fence">Fence Boundary</option>
+                              <option value="Firewall">Firewall 150mm</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="text-slate-400 block text-[11px] mb-1">Height (m):</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="1"
+                              max="10"
+                              value={activeSelectedWall.height}
+                              onChange={(e) => {
+                                const newH = Math.max(0.5, parseFloat(e.target.value) || 3.0);
+                                const updated = walls.map((w) => {
+                                  if (w.id === activeSelectedWall.id) {
+                                    const gross = Number((w.length * newH).toFixed(2));
+                                    const net = Math.max(0, Number((gross - w.openingArea).toFixed(2)));
+                                    return {
+                                      ...w,
+                                      height: newH,
+                                      grossArea: gross,
+                                      netArea: net,
+                                      baseCHB: Math.ceil(net / chbAreaSqM),
+                                    };
+                                  }
+                                  return w;
+                                });
+                                setWalls(updated);
+                              }}
+                              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-slate-100 font-mono text-center"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 space-y-1 font-mono text-[11px]">
+                          <div className="flex justify-between text-slate-400">
+                            <span>Length:</span>
+                            <span className="text-slate-200 font-bold">{activeSelectedWall.length.toFixed(2)} m</span>
+                          </div>
+                          <div className="flex justify-between text-slate-400">
+                            <span>Gross Area:</span>
+                            <span className="text-slate-200">{activeSelectedWall.grossArea.toFixed(2)} m²</span>
+                          </div>
+                          <div className="flex justify-between text-slate-400">
+                            <span>Openings Deducted:</span>
+                            <span className="text-amber-400">-{activeSelectedWall.openingArea.toFixed(2)} m²</span>
+                          </div>
+                          <div className="flex justify-between text-slate-300 font-bold pt-1 border-t border-slate-800">
+                            <span>Net CHB Needed:</span>
+                            <span className="text-emerald-400">{activeSelectedWall.baseCHB} pcs</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Door Properties */}
+                    {activeSelectedDoor && (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-slate-400 block text-[11px] mb-1">Door Label:</label>
+                          <input
+                            type="text"
+                            value={activeSelectedDoor.label}
+                            onChange={(e) => {
+                              const updated = doors.map((d) =>
+                                d.id === activeSelectedDoor.id ? { ...d, label: e.target.value } : d
+                              );
+                              setDoors(updated);
+                            }}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-slate-100"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-slate-400 block text-[11px] mb-1">Width (m):</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={activeSelectedDoor.widthM}
+                              onChange={(e) => {
+                                const newW = Math.max(0.4, parseFloat(e.target.value) || 0.9);
+                                const updated = doors.map((d) =>
+                                  d.id === activeSelectedDoor.id ? { ...d, widthM: newW } : d
+                                );
+                                setDoors(updated);
+                              }}
+                              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2 py-1.5 text-slate-100 font-mono text-center"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-slate-400 block text-[11px] mb-1">Height (m):</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={activeSelectedDoor.heightM || 2.1}
+                              onChange={(e) => {
+                                const newH = Math.max(1.0, parseFloat(e.target.value) || 2.1);
+                                const updated = doors.map((d) =>
+                                  d.id === activeSelectedDoor.id ? { ...d, heightM: newH } : d
+                                );
+                                setDoors(updated);
+                              }}
+                              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2 py-1.5 text-slate-100 font-mono text-center"
+                            />
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const swings: ('left-in' | 'left-out' | 'right-in' | 'right-out')[] = [
+                              'left-in',
+                              'right-in',
+                              'left-out',
+                              'right-out',
+                            ];
+                            const curIdx = swings.indexOf((activeSelectedDoor.swingDirection as any) || 'left-in');
+                            const nextSwing = swings[(curIdx + 1) % swings.length];
+                            const updated = doors.map((d) =>
+                              d.id === activeSelectedDoor.id ? { ...d, swingDirection: nextSwing } : d
+                            );
+                            setDoors(updated);
+                          }}
+                          className="w-full inline-flex items-center justify-center gap-2 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Flip Swing Direction</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Window Properties */}
+                    {activeSelectedWin && (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-slate-400 block text-[11px] mb-1">Window Label:</label>
+                          <input
+                            type="text"
+                            value={activeSelectedWin.label}
+                            onChange={(e) => {
+                              const updated = windows.map((w) =>
+                                w.id === activeSelectedWin.id ? { ...w, label: e.target.value } : w
+                              );
+                              setWindows(updated);
+                            }}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-slate-100"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-slate-400 block text-[11px] mb-1">Width (m):</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={activeSelectedWin.widthM}
+                              onChange={(e) => {
+                                const newW = Math.max(0.4, parseFloat(e.target.value) || 1.2);
+                                const updated = windows.map((w) =>
+                                  w.id === activeSelectedWin.id ? { ...w, widthM: newW } : w
+                                );
+                                setWindows(updated);
+                              }}
+                              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2 py-1.5 text-slate-100 font-mono text-center"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-slate-400 block text-[11px] mb-1">Height (m):</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={activeSelectedWin.heightM}
+                              onChange={(e) => {
+                                const newH = Math.max(0.4, parseFloat(e.target.value) || 1.2);
+                                const updated = windows.map((w) =>
+                                  w.id === activeSelectedWin.id ? { ...w, heightM: newH } : w
+                                );
+                                setWindows(updated);
+                              }}
+                              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2 py-1.5 text-slate-100 font-mono text-center"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Room Properties */}
+                    {activeSelectedRoom && (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-slate-400 block text-[11px] mb-1">Room Name:</label>
+                          <input
+                            type="text"
+                            value={activeSelectedRoom.name}
+                            onChange={(e) => {
+                              const updated = rooms.map((r) =>
+                                r.id === activeSelectedRoom.id ? { ...r, name: e.target.value } : r
+                              );
+                              setRooms(updated);
+                            }}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-slate-100"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-slate-400 block text-[11px] mb-1">Floor Area (m²):</label>
+                          <input
+                            type="number"
+                            step="0.5"
+                            value={activeSelectedRoom.customArea || 16.0}
+                            onChange={(e) => {
+                              const newA = Math.max(1.0, parseFloat(e.target.value) || 16.0);
+                              const updated = rooms.map((r) =>
+                                r.id === activeSelectedRoom.id ? { ...r, customArea: newA } : r
+                              );
+                              setRooms(updated);
+                            }}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-slate-100 font-mono text-center"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* 2. Active Tool Defaults when nothing is selected */
+                  <div className="space-y-4">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+                      <h4 className="font-bold text-slate-200 text-xs flex items-center gap-2">
+                        <PenTool className="w-3.5 h-3.5 text-cyan-400" />
+                        Wall Tool Settings
+                      </h4>
+
+                      <div>
+                        <label className="text-slate-400 block text-[11px] mb-1">Default Wall Type:</label>
+                        <select
+                          value={currentWallType}
+                          onChange={(e) => setCurrentWallType(e.target.value as WallType)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-slate-100 font-medium"
+                        >
+                          <option value="Exterior Wall">Exterior Wall (150mm / 6")</option>
+                          <option value="Interior Wall">Interior Wall (100mm / 4")</option>
+                          <option value="Partition Wall">Partition Wall (100mm)</option>
+                          <option value="Perimeter / Fence">Perimeter Fence Boundary</option>
+                          <option value="Firewall">Firewall (150mm)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-slate-400 block text-[11px] mb-1">Height (Clear Height):</label>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {WALL_HEIGHT_PRESETS.map((h) => (
+                            <button
+                              key={h}
+                              type="button"
+                              onClick={() => setCurrentWallHeight(h)}
+                              className={`px-2 py-1 rounded-lg font-mono text-xs font-bold transition-colors ${
+                                currentWallHeight === h
+                                  ? 'bg-cyan-600 text-white shadow-sm'
+                                  : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200'
+                              }`}
+                            >
+                              {h.toFixed(1)}m
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+                      <h4 className="font-bold text-slate-200 text-xs flex items-center gap-2">
+                        <DoorOpen className="w-3.5 h-3.5 text-amber-400" />
+                        Door & Window Presets
+                      </h4>
+
+                      <div>
+                        <label className="text-slate-400 block text-[11px] mb-1">Selected Door Size:</label>
+                        <select
+                          value={selectedDoorPreset.label}
+                          onChange={(e) => {
+                            const found = DOOR_PRESETS.find((p) => p.label === e.target.value);
+                            if (found) setSelectedDoorPreset(found);
+                          }}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-slate-100"
+                        >
+                          {DOOR_PRESETS.map((dp) => (
+                            <option key={dp.label} value={dp.label}>
+                              {dp.label} ({dp.width}×{dp.height}m)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-slate-400 block text-[11px] mb-1">Selected Window Size:</label>
+                        <select
+                          value={selectedWindowPreset.label}
+                          onChange={(e) => {
+                            const found = WINDOW_PRESETS.find((p) => p.label === e.target.value);
+                            if (found) setSelectedWindowPreset(found);
+                          }}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-slate-100"
+                        >
+                          {WINDOW_PRESETS.map((wp) => (
+                            <option key={wp.label} value={wp.label}>
+                              {wp.label} ({wp.width}×{wp.height}m)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 2: 1-CLICK QUICK ROOM LIBRARY */}
+            {sidebarTab === 'templates' && (
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
+                <p className="text-slate-400 text-[11px]">
+                  Click any pre-dimensioned room template to immediately drop it into your floor plan canvas:
+                </p>
+
+                <div className="grid grid-cols-1 gap-2.5">
+                  {QUICK_ROOM_TEMPLATES.map((tmpl) => (
+                    <button
+                      key={tmpl.name}
+                      type="button"
+                      onClick={() => handleDropRoomTemplate(tmpl)}
+                      className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-900 hover:bg-slate-800/90 border border-slate-800 hover:border-cyan-500/50 transition-all text-left group shadow-sm"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl p-1.5 rounded-xl bg-slate-950 border border-slate-800">{tmpl.icon}</span>
+                        <div>
+                          <div className="font-bold text-slate-200 group-hover:text-cyan-300 transition-colors">
+                            {tmpl.name}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            {tmpl.widthM.toFixed(1)}m × {tmpl.heightM.toFixed(1)}m
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="font-mono font-bold text-cyan-400 text-xs">{tmpl.area.toFixed(1)} m²</span>
+                        <div className="text-[9px] text-slate-500 font-mono">+ 4 Walls</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Tab 3: TAKEOFF SCHEDULE OF ELEMENTS */}
+            {sidebarTab === 'schedule' && (
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
+                <div className="flex items-center justify-between text-slate-400 text-[11px] pb-1 border-b border-slate-800">
+                  <span>Wall Schedule ({walls.length})</span>
+                  <span>Net CHB</span>
+                </div>
+
+                <div className="space-y-1.5">
+                  {walls.map((w) => (
+                    <div
+                      key={w.id}
+                      onClick={() => setSelectedElement({ type: 'wall', id: w.id })}
+                      className={`flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${
+                        selectedElement?.id === w.id
+                          ? 'bg-cyan-950/60 border-cyan-500 text-cyan-200'
+                          : 'bg-slate-900/80 border-slate-800 text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      <div>
+                        <div className="font-bold font-mono text-[11px]">{w.id} • {w.name}</div>
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          {w.length}m × {w.height}m ({w.netArea}m²)
+                        </div>
+                      </div>
+
+                      <span className="font-mono font-bold text-emerald-400 text-xs">
+                        {w.baseCHB} pcs
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </aside>
         </div>
 
-        {/* Central Drawing Viewport */}
-        <div className="relative flex-1 bg-slate-950 overflow-hidden flex items-center justify-center select-none">
-          <canvas
-            ref={canvasRef}
-            width={1200}
-            height={700}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onWheel={handleWheel}
-            className="w-full h-full cursor-crosshair block"
-          />
-
-          {/* Floating Instructions Pill */}
-          <div className="absolute top-3 left-4 pointer-events-none bg-slate-950/85 backdrop-blur-xs border border-slate-800 rounded-lg px-3 py-1.5 text-[11px] text-slate-300 flex items-center gap-2 shadow-lg">
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            <span>
-              {activeTool === 'wall' && 'Click and drag on the grid to draw wall segments with automatic length calculation.'}
-              {activeTool === 'room' && 'Click and drag diagonally to generate 4 connected room walls and floor area.'}
-              {activeTool === 'door' && 'Click any wall line to install a door with architectural swing arc and deduction.'}
-              {activeTool === 'window' && 'Click any wall line to install a window opening with automatic CHB deduction.'}
-              {activeTool === 'room_label' && 'Click inside any room to drop an architectural label tag.'}
-              {activeTool === 'dimension' && 'Click and drag to place architectural dimension markers.'}
-            </span>
-          </div>
-
-          {/* Floating Live Coordinates readout */}
-          <div className="absolute bottom-3 left-4 pointer-events-none bg-slate-950/85 backdrop-blur-xs border border-slate-800 rounded-lg px-3 py-1 text-[11px] font-mono text-cyan-300 shadow-lg flex items-center gap-3">
-            <span>X: {(cursorPos.x / SCALE_PPM).toFixed(2)}m</span>
-            <span>Y: {(cursorPos.y / SCALE_PPM).toFixed(2)}m</span>
-            <span>Zoom: {Math.round(zoom * 100)}%</span>
-          </div>
-        </div>
-
-        {/* Bottom Real-Time CHB Takeoff Summary Bar */}
-        <div className="bg-slate-950 border-t border-slate-800 px-4 py-3 flex flex-wrap items-center justify-between gap-4 text-xs">
-          <div className="flex items-center gap-4 flex-wrap">
+        {/* Bottom Real-Time CHB Takeoff Dashboard Bar */}
+        <footer className="bg-slate-950 border-t border-slate-800 px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 text-xs">
+          <div className="flex items-center gap-4 sm:gap-6 flex-wrap font-sans">
             <div className="flex items-center gap-2">
               <span className="text-slate-400">Total Walls:</span>
-              <span className="font-mono font-bold text-slate-100 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                {walls.length} walls ({totalWallLength.toFixed(1)}m length)
+              <span className="font-mono font-bold text-slate-100 bg-slate-900 px-2.5 py-1 rounded-xl border border-slate-800">
+                {walls.length} units ({totalWallLength.toFixed(1)}m length)
               </span>
             </div>
 
             <div className="flex items-center gap-2">
               <span className="text-slate-400">Net Masonry Area:</span>
-              <span className="font-mono font-bold text-cyan-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+              <span className="font-mono font-bold text-cyan-400 bg-slate-900 px-2.5 py-1 rounded-xl border border-slate-800">
                 {totalNetArea.toFixed(2)} m²
               </span>
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-slate-400">Openings Deducted:</span>
-              <span className="font-mono font-medium text-amber-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+              <span className="text-slate-400">Openings:</span>
+              <span className="font-mono font-medium text-amber-400 bg-slate-900 px-2.5 py-1 rounded-xl border border-slate-800">
                 -{totalOpeningArea.toFixed(2)} m² ({doors.length} doors, {windows.length} windows)
               </span>
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-slate-400 font-medium">Estimated CHB Needed:</span>
-              <span className="font-mono font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-700/60 px-2.5 py-0.5 rounded text-sm">
+              <span className="text-slate-300 font-bold">Estimated CHB Needed:</span>
+              <span className="font-mono font-black text-emerald-400 bg-emerald-950/80 border border-emerald-700/80 px-3 py-1 rounded-xl text-sm shadow-sm">
                 {finalCHBWithWaste.toLocaleString()} pcs ({wastePercentage}% waste)
               </span>
             </div>
@@ -1277,14 +2328,90 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
             <button
               type="button"
               onClick={handleApplyToProject}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs shadow-md shadow-cyan-950 transition-all"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs shadow-lg shadow-cyan-950 transition-all cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4" />
-              Apply Blueprint & Calculate
+              <span>Apply Blueprint &amp; Calculate</span>
+            </button>
+          </div>
+        </footer>
+      </div>
+
+      {/* Keyboard Shortcuts Cheat Sheet Modal */}
+      {showShortcutsModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs z-60 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                <HelpCircle className="w-4 h-4 text-cyan-400" />
+                Blueprint Maker Keyboard Shortcuts
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowShortcutsModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-300">Select / Edit Tool</span>
+                <kbd className="bg-slate-800 px-2 py-0.5 rounded text-cyan-400 font-mono font-bold">V</kbd>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-300">Draw Wall Tool</span>
+                <kbd className="bg-slate-800 px-2 py-0.5 rounded text-cyan-400 font-mono font-bold">W</kbd>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-300">Draw Room Box</span>
+                <kbd className="bg-slate-800 px-2 py-0.5 rounded text-cyan-400 font-mono font-bold">R</kbd>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-300">Add Door Opening</span>
+                <kbd className="bg-slate-800 px-2 py-0.5 rounded text-cyan-400 font-mono font-bold">D</kbd>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-300">Add Window Opening</span>
+                <kbd className="bg-slate-800 px-2 py-0.5 rounded text-cyan-400 font-mono font-bold">N</kbd>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-300">Room Stamp Tag</span>
+                <kbd className="bg-slate-800 px-2 py-0.5 rounded text-cyan-400 font-mono font-bold">T</kbd>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-300">Dimension Line</span>
+                <kbd className="bg-slate-800 px-2 py-0.5 rounded text-cyan-400 font-mono font-bold">M</kbd>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-300">Pan Canvas</span>
+                <kbd className="bg-slate-800 px-2 py-0.5 rounded text-cyan-400 font-mono font-bold">H or Space+Drag</kbd>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-300">Delete Selected Element</span>
+                <kbd className="bg-slate-800 px-2 py-0.5 rounded text-rose-400 font-mono font-bold">Delete / Backspace</kbd>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-300">Undo Action</span>
+                <kbd className="bg-slate-800 px-2 py-0.5 rounded text-slate-300 font-mono font-bold">Ctrl + Z</kbd>
+              </div>
+              <div className="flex justify-between items-center py-1">
+                <span className="text-slate-300">Redo Action</span>
+                <kbd className="bg-slate-800 px-2 py-0.5 rounded text-slate-300 font-mono font-bold">Ctrl + Y</kbd>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowShortcutsModal(false)}
+              className="w-full py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition-colors"
+            >
+              Got it
             </button>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
@@ -1296,9 +2423,9 @@ function distToSegment(
   w: { x: number; y: number }
 ): number {
   const l2 = (v.x - w.x) * (v.x - w.x) + (v.y - w.y) * (v.y - w.y);
-  if (l2 === 0) return Math.sqrt((p.x - v.x) * (p.x - v.x) + (p.y - v.y) * (p.y - v.y));
+  if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);
   let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
   t = Math.max(0, Math.min(1, t));
   const proj = { x: v.x + t * (w.x - v.x), y: v.y + t * (w.y - v.y) };
-  return Math.sqrt((p.x - proj.x) * (p.x - proj.x) + (p.y - proj.y) * (p.y - proj.y));
+  return Math.hypot(p.x - proj.x, p.y - proj.y);
 }
