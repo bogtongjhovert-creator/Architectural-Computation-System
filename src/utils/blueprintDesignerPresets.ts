@@ -1,5 +1,7 @@
 import { DesignerPlanState, Wall, Opening } from '../types';
 
+export type ThemeMode = 'blueprint' | 'darkcad' | 'monochrome';
+
 export interface PlanPreset {
   id: string;
   name: string;

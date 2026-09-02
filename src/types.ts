@@ -124,6 +124,26 @@ export interface DesignerWindow {
   label: string;
 }
 
+export type ShapeKind = 'rectangle' | 'l_shape' | 't_shape' | 'porch' | 'custom';
+
+export interface DesignerRoomShape {
+  id: string;
+  name: string; // e.g. "LIVING AREA", "MASTER BEDROOM"
+  kind: ShapeKind;
+  x: number; // center x in canvas px
+  y: number; // center y in canvas px
+  widthM: number; // in meters
+  heightM: number; // in meters
+  wallHeightM: number;
+  wallType: WallType;
+  color?: string;
+  cutWidthM?: number; // for L-shape / T-shape cuts
+  cutHeightM?: number;
+  rotation?: number; // 0, 90, 180, 270
+  customArea?: number;
+  wallIds?: string[]; // IDs of generated walls corresponding to this shape
+}
+
 export interface DesignerRoomLabel {
   id: string;
   name: string;
@@ -132,6 +152,7 @@ export interface DesignerRoomLabel {
   widthM?: number;
   heightM?: number;
   customArea?: number;
+  shapeId?: string;
 }
 
 export interface DesignerDimension {
@@ -156,6 +177,7 @@ export interface DesignerPlanState {
   rooms: DesignerRoomLabel[];
   dimensions: DesignerDimension[];
   columns: DesignerColumn[];
+  shapes?: DesignerRoomShape[];
 }
 
 export interface CalculationAuditStep {
