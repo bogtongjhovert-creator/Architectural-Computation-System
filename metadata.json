@@ -1,0 +1,6 @@
+{
+  "name": "Blueprint CHB Quantity Calculator",
+  "description": "Architectural Blueprint Hollow Block Calculator with interactive plan viewer, scale calibration, wall measurements, door/window deductions, and exact CHB quantity calculation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
