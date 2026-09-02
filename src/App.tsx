@@ -8,6 +8,7 @@ import {
 import {
   calculateProjectTotals,
   calculateWallMetrics,
+  DEFAULT_ENGINEERING_SETTINGS,
 } from './utils/calculator';
 import {
   createDefaultProject,
@@ -28,10 +29,17 @@ import { CalculationDetailsModal } from './components/CalculationDetailsModal';
 import { SummaryDashboard } from './components/SummaryDashboard';
 import { HelpModal } from './components/HelpModal';
 import { AnalysisResultsModal } from './components/AnalysisResultsModal';
+import { EngineeringSettings } from './types';
 
 export default function App() {
   // Initialize project state from LocalStorage or default sample
-  const [project, setProject] = useState<BlueprintProject>(() => loadProjectFromStorage());
+  const [project, setProject] = useState<BlueprintProject>(() => {
+    const loaded = loadProjectFromStorage();
+    if (!loaded.engineeringSettings) {
+      loaded.engineeringSettings = { ...DEFAULT_ENGINEERING_SETTINGS };
+    }
+    return loaded;
+  });
 
   // Active modal states
   const [isWallModalOpen, setIsWallModalOpen] = useState<boolean>(false);
@@ -63,8 +71,13 @@ export default function App() {
 
   // Derived Project Totals
   const projectTotals = useMemo(() => {
-    return calculateProjectTotals(project.walls, project.chbSettings, project.wastePercentage);
-  }, [project.walls, project.chbSettings, project.wastePercentage]);
+    return calculateProjectTotals(
+      project.walls,
+      project.chbSettings,
+      project.wastePercentage,
+      project.engineeringSettings || DEFAULT_ENGINEERING_SETTINGS
+    );
+  }, [project.walls, project.chbSettings, project.wastePercentage, project.engineeringSettings]);
 
   // Handlers for CHB Settings
   const handleCHBSettingsChange = (newSettings: CHBSettings) => {
@@ -74,6 +87,7 @@ export default function App() {
       return {
         ...w,
         baseCHB: m.baseCHB,
+        exactCHB: m.exactCHB,
       };
     });
 
@@ -90,6 +104,15 @@ export default function App() {
     setProject((prev) => ({
       ...prev,
       wastePercentage: newWaste,
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
+  // Handlers for Engineering Settings
+  const handleEngineeringChange = (newEng: EngineeringSettings) => {
+    setProject((prev) => ({
+      ...prev,
+      engineeringSettings: newEng,
       updatedAt: new Date().toISOString(),
     }));
   };
@@ -384,6 +407,8 @@ export default function App() {
           chbSettings={project.chbSettings}
           wastePercentage={project.wastePercentage}
           onWasteChange={handleWasteChange}
+          engineeringSettings={project.engineeringSettings}
+          onUpdateEngineering={handleEngineeringChange}
           totals={projectTotals}
           onOpenCalculationDetails={() => handleOpenCalculationDetails(null)}
           onExportCsv={handleExportCsv}

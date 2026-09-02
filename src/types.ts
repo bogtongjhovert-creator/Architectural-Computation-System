@@ -44,6 +44,7 @@ export interface Wall {
   openingArea: number; // sum of openings
   netArea: number; // grossArea - openingArea
   baseCHB: number; // Math.ceil(netArea / chbArea)
+  exactCHB?: number; // unrounded exact decimal (e.g. 334.5 pcs)
   color?: string;
   tracePoints?: [WallTracePoint, WallTracePoint]; // canvas coordinates if drawn on blueprint
   isAutoDetected?: boolean;
@@ -58,6 +59,16 @@ export interface ScaleCalibration {
   pixelsPerMeter: number;
 }
 
+export type PlasteringScope = 'both' | 'one' | 'none';
+export type RebarSpacing = 'standard' | 'dense' | 'light' | 'none';
+
+export interface EngineeringSettings {
+  plasterScope: PlasteringScope; // both sides (0.192 bags/m²), one side (0.096 bags/m²), none (0)
+  rebarSpacing: RebarSpacing; // standard (600mm vert/horiz ~0.31 pcs/m²), dense (400mm ~0.48 pcs/m²), light (800mm ~0.24 pcs/m²), none
+  rcColumnsCount: number; // number of 0.20m RC columns embedded in masonry (each deducts column area)
+  rcColumnWidthM: number; // default 0.20m
+}
+
 export interface BlueprintProject {
   id: string;
   projectName: string;
@@ -66,7 +77,8 @@ export interface BlueprintProject {
   blueprintFileType: 'image' | 'pdf' | 'sample' | 'none';
   floorArea: number; // in m²
   chbSettings: CHBSettings;
-  wastePercentage: number; // e.g. 10
+  wastePercentage: number; // e.g. 5, 8, 10
+  engineeringSettings?: EngineeringSettings;
   walls: Wall[];
   scale: ScaleCalibration;
   createdAt: string;
@@ -86,6 +98,7 @@ export interface WallCalculationAudit {
   wallName: string;
   steps: CalculationAuditStep[];
   netWallArea: number;
+  exactCHB: number;
   baseCHB: number;
   wastePercentage: number;
   finalCHB: number;
@@ -96,17 +109,23 @@ export interface ProjectTotals {
   totalLengthM: number;
   totalGrossAreaSqM: number;
   totalOpeningAreaSqM: number;
+  columnDeductionAreaSqM: number;
   totalNetAreaSqM: number;
-  baseCHBQuantity: number;
+  exactBaseCHB: number; // Unrounded decimal base (e.g. 1419.62)
+  baseCHBQuantity: number; // Math.ceil(exactBaseCHB)
   wastePercentage: number;
   wasteQuantity: number;
   finalCHBQuantity: number;
   chbAreaSqM: number;
   chbPerSqM: number;
-  // Estimated auxiliary materials (BOM)
+  // Accurate auxiliary construction materials (DPWH / NSCP Standards)
   mortarCementBags: number;
   plasterCementBags: number;
   totalCementBags: number;
   sandCubicMeters: number;
   rebarPieces10mm: number;
+  tieWireKg: number;
+  plasterScope: PlasteringScope;
+  rebarSpacing: RebarSpacing;
 }
+

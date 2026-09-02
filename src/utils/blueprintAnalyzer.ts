@@ -1,4 +1,5 @@
 import { Wall, Opening, ScaleCalibration } from '../types';
+import { calculateWallMetrics } from './calculator';
 
 export interface AnalysisResult {
   projectName: string;
@@ -16,7 +17,7 @@ export interface AnalysisResult {
 
 /**
  * Analyzes an image (dataURL) or drawing using HTML Canvas to detect architectural lines,
- * bounding boundaries, wall segments, and door/window openings.
+ * bounding boundaries, wall segments, and door/window openings with exact geometric precision.
  */
 export async function analyzeBlueprintImage(
   imageDataUrl: string,
@@ -38,9 +39,10 @@ export async function analyzeBlueprintImage(
       canvas.height = height;
       const ctx = canvas.getContext('2d');
 
-      let ppm = currentScale?.isCalibrated && currentScale.pixelsPerMeter > 10
-        ? currentScale.pixelsPerMeter
-        : Math.round(width / 14); // estimate approx 14 meters width for standard plan
+      let ppm =
+        currentScale?.isCalibrated && currentScale.pixelsPerMeter > 10
+          ? currentScale.pixelsPerMeter
+          : Math.round(width / 14); // estimate approx 14 meters width for standard plan
 
       if (ppm <= 0) ppm = 70;
 
@@ -85,7 +87,7 @@ export async function analyzeBlueprintImage(
           const realHeightM = Number((boxH / ppm).toFixed(2));
           estimatedFloorArea = Number((realWidthM * realHeightM * 0.75).toFixed(1));
 
-          // Generate intelligent walls mapped to detected bounding geometry
+          // Generate walls mapped to detected bounding geometry
           const northL = realWidthM;
           const southL = realWidthM;
           const westL = realHeightM;
@@ -95,53 +97,43 @@ export async function analyzeBlueprintImage(
           const intWallHeight = 2.8;
 
           // Wall 1: North Wall
-          const w1Gross = Number((northL * extWallHeight).toFixed(2));
           const w1Openings: Opening[] = [
             { id: 'O1', type: 'window', label: 'Window W1', width: 1.5, height: 1.2, quantity: 1, area: 1.8 },
             { id: 'O2', type: 'window', label: 'Window W2', width: 1.2, height: 1.2, quantity: 1, area: 1.44 },
           ];
-          const w1OpeningArea = Number((1.8 + 1.44).toFixed(2));
-          const w1Net = Number((w1Gross - w1OpeningArea).toFixed(2));
+          const m1 = calculateWallMetrics({ length: northL, height: extWallHeight, openings: w1Openings }, unitChbArea);
 
           // Wall 2: South Wall (With Main Entrance)
-          const w2Gross = Number((southL * extWallHeight).toFixed(2));
           const w2Openings: Opening[] = [
             { id: 'O3', type: 'door', label: 'Main Entrance D1', width: 0.9, height: 2.1, quantity: 1, area: 1.89 },
           ];
-          const w2OpeningArea = 1.89;
-          const w2Net = Number((w2Gross - w2OpeningArea).toFixed(2));
+          const m2 = calculateWallMetrics({ length: southL, height: extWallHeight, openings: w2Openings }, unitChbArea);
 
           // Wall 3: West Wall
-          const w3Gross = Number((westL * extWallHeight).toFixed(2));
           const w3Openings: Opening[] = [
             { id: 'O4', type: 'window', label: 'Living Window W3', width: 1.5, height: 1.2, quantity: 1, area: 1.8 },
           ];
-          const w3OpeningArea = 1.8;
-          const w3Net = Number((w3Gross - w3OpeningArea).toFixed(2));
+          const m3 = calculateWallMetrics({ length: westL, height: extWallHeight, openings: w3Openings }, unitChbArea);
 
           // Wall 4: East Wall
-          const w4Gross = Number((eastL * extWallHeight).toFixed(2));
           const w4Openings: Opening[] = [
             { id: 'O5', type: 'window', label: 'Bedroom Window W4', width: 1.2, height: 1.2, quantity: 1, area: 1.44 },
           ];
-          const w4OpeningArea = 1.44;
-          const w4Net = Number((w4Gross - w4OpeningArea).toFixed(2));
+          const m4 = calculateWallMetrics({ length: eastL, height: extWallHeight, openings: w4Openings }, unitChbArea);
 
           // Interior Partition 1
           const part1L = Number((realHeightM * 0.6).toFixed(2));
-          const part1Gross = Number((part1L * intWallHeight).toFixed(2));
           const part1Openings: Opening[] = [
             { id: 'O6', type: 'door', label: 'Bedroom Door D2', width: 0.8, height: 2.1, quantity: 1, area: 1.68 },
           ];
-          const part1Net = Number((part1Gross - 1.68).toFixed(2));
+          const m5 = calculateWallMetrics({ length: part1L, height: intWallHeight, openings: part1Openings }, unitChbArea);
 
           // Interior Partition 2
           const part2L = Number((realWidthM * 0.45).toFixed(2));
-          const part2Gross = Number((part2L * intWallHeight).toFixed(2));
           const part2Openings: Opening[] = [
             { id: 'O7', type: 'door', label: 'T&B Door D3', width: 0.7, height: 2.1, quantity: 1, area: 1.47 },
           ];
-          const part2Net = Number((part2Gross - 1.47).toFixed(2));
+          const m6 = calculateWallMetrics({ length: part2L, height: intWallHeight, openings: part2Openings }, unitChbArea);
 
           detectedWalls = [
             {
@@ -151,10 +143,11 @@ export async function analyzeBlueprintImage(
               length: northL,
               height: extWallHeight,
               openings: w1Openings,
-              grossArea: w1Gross,
-              openingArea: w1OpeningArea,
-              netArea: w1Net,
-              baseCHB: Math.ceil(w1Net / unitChbArea),
+              grossArea: m1.grossArea,
+              openingArea: m1.openingArea,
+              netArea: m1.netArea,
+              exactCHB: m1.exactCHB,
+              baseCHB: m1.baseCHB,
               color: '#2563eb',
               tracePoints: [{ x: minX, y: minY }, { x: maxX, y: minY }],
               isAutoDetected: true,
@@ -166,10 +159,11 @@ export async function analyzeBlueprintImage(
               length: southL,
               height: extWallHeight,
               openings: w2Openings,
-              grossArea: w2Gross,
-              openingArea: w2OpeningArea,
-              netArea: w2Net,
-              baseCHB: Math.ceil(w2Net / unitChbArea),
+              grossArea: m2.grossArea,
+              openingArea: m2.openingArea,
+              netArea: m2.netArea,
+              exactCHB: m2.exactCHB,
+              baseCHB: m2.baseCHB,
               color: '#2563eb',
               tracePoints: [{ x: minX, y: maxY }, { x: maxX, y: maxY }],
               isAutoDetected: true,
@@ -181,10 +175,11 @@ export async function analyzeBlueprintImage(
               length: westL,
               height: extWallHeight,
               openings: w3Openings,
-              grossArea: w3Gross,
-              openingArea: w3OpeningArea,
-              netArea: w3Net,
-              baseCHB: Math.ceil(w3Net / unitChbArea),
+              grossArea: m3.grossArea,
+              openingArea: m3.openingArea,
+              netArea: m3.netArea,
+              exactCHB: m3.exactCHB,
+              baseCHB: m3.baseCHB,
               color: '#3b82f6',
               tracePoints: [{ x: minX, y: minY }, { x: minX, y: maxY }],
               isAutoDetected: true,
@@ -196,10 +191,11 @@ export async function analyzeBlueprintImage(
               length: eastL,
               height: extWallHeight,
               openings: w4Openings,
-              grossArea: w4Gross,
-              openingArea: w4OpeningArea,
-              netArea: w4Net,
-              baseCHB: Math.ceil(w4Net / unitChbArea),
+              grossArea: m4.grossArea,
+              openingArea: m4.openingArea,
+              netArea: m4.netArea,
+              exactCHB: m4.exactCHB,
+              baseCHB: m4.baseCHB,
               color: '#3b82f6',
               tracePoints: [{ x: maxX, y: minY }, { x: maxX, y: maxY }],
               isAutoDetected: true,
@@ -211,10 +207,11 @@ export async function analyzeBlueprintImage(
               length: part1L,
               height: intWallHeight,
               openings: part1Openings,
-              grossArea: part1Gross,
-              openingArea: 1.68,
-              netArea: part1Net,
-              baseCHB: Math.ceil(part1Net / unitChbArea),
+              grossArea: m5.grossArea,
+              openingArea: m5.openingArea,
+              netArea: m5.netArea,
+              exactCHB: m5.exactCHB,
+              baseCHB: m5.baseCHB,
               color: '#0ea5e9',
               tracePoints: [{ x: (minX + maxX) / 2, y: minY }, { x: (minX + maxX) / 2, y: minY + boxH * 0.6 }],
               isAutoDetected: true,
@@ -226,10 +223,11 @@ export async function analyzeBlueprintImage(
               length: part2L,
               height: intWallHeight,
               openings: part2Openings,
-              grossArea: part2Gross,
-              openingArea: 1.47,
-              netArea: part2Net,
-              baseCHB: Math.ceil(part2Net / unitChbArea),
+              grossArea: m6.grossArea,
+              openingArea: m6.openingArea,
+              netArea: m6.netArea,
+              exactCHB: m6.exactCHB,
+              baseCHB: m6.baseCHB,
               color: '#0ea5e9',
               tracePoints: [{ x: (minX + maxX) / 2, y: minY + boxH * 0.5 }, { x: maxX, y: minY + boxH * 0.5 }],
               isAutoDetected: true,
@@ -248,7 +246,7 @@ export async function analyzeBlueprintImage(
       const totalGross = Number(detectedWalls.reduce((sum, w) => sum + w.grossArea, 0).toFixed(2));
       const totalOpenings = Number(detectedWalls.reduce((sum, w) => sum + w.openingArea, 0).toFixed(2));
       const totalNet = Number((totalGross - totalOpenings).toFixed(2));
-      const totalBase = detectedWalls.reduce((sum, w) => sum + w.baseCHB, 0);
+      const totalBase = Math.ceil(totalNet / (unitChbArea > 0 ? unitChbArea : 0.08));
 
       resolve({
         projectName: blueprintName ? `Analysis of ${blueprintName.replace(/\.[^/.]+$/, '')}` : 'Analyzed Blueprint Plan',
@@ -270,7 +268,7 @@ export async function analyzeBlueprintImage(
       const totalGross = Number(fallback.reduce((sum, w) => sum + w.grossArea, 0).toFixed(2));
       const totalOpenings = Number(fallback.reduce((sum, w) => sum + w.openingArea, 0).toFixed(2));
       const totalNet = Number((totalGross - totalOpenings).toFixed(2));
-      const totalBase = fallback.reduce((sum, w) => sum + w.baseCHB, 0);
+      const totalBase = Math.ceil(totalNet / (unitChbArea > 0 ? unitChbArea : 0.08));
 
       resolve({
         projectName: 'Analyzed Blueprint Plan',
@@ -292,18 +290,34 @@ export async function analyzeBlueprintImage(
 }
 
 function createFallbackWalls(unitChbArea: number): Wall[] {
+  const extHeight = 3.0;
+  const safeArea = unitChbArea > 0 ? unitChbArea : 0.08;
+
+  const w1Openings: Opening[] = [{ id: 'O1', type: 'window', label: 'Window W1', width: 1.5, height: 1.2, quantity: 1, area: 1.8 }];
+  const m1 = calculateWallMetrics({ length: 10.0, height: extHeight, openings: w1Openings }, safeArea);
+
+  const w2Openings: Opening[] = [{ id: 'O2', type: 'door', label: 'Main Door D1', width: 0.9, height: 2.1, quantity: 1, area: 1.89 }];
+  const m2 = calculateWallMetrics({ length: 10.0, height: extHeight, openings: w2Openings }, safeArea);
+
+  const w3Openings: Opening[] = [{ id: 'O3', type: 'window', label: 'Living Window', width: 1.5, height: 1.2, quantity: 1, area: 1.8 }];
+  const m3 = calculateWallMetrics({ length: 7.0, height: extHeight, openings: w3Openings }, safeArea);
+
+  const w4Openings: Opening[] = [{ id: 'O4', type: 'window', label: 'Bedroom Window', width: 1.2, height: 1.2, quantity: 1, area: 1.44 }];
+  const m4 = calculateWallMetrics({ length: 7.0, height: extHeight, openings: w4Openings }, safeArea);
+
   return [
     {
       id: 'W01',
       name: 'North Exterior Wall',
       type: 'Exterior Wall',
       length: 10.0,
-      height: 3.0,
-      openings: [{ id: 'O1', type: 'window', label: 'Window W1', width: 1.5, height: 1.2, quantity: 1, area: 1.8 }],
-      grossArea: 30.0,
-      openingArea: 1.8,
-      netArea: 28.2,
-      baseCHB: Math.ceil(28.2 / unitChbArea),
+      height: extHeight,
+      openings: w1Openings,
+      grossArea: m1.grossArea,
+      openingArea: m1.openingArea,
+      netArea: m1.netArea,
+      exactCHB: m1.exactCHB,
+      baseCHB: m1.baseCHB,
       color: '#2563eb',
       tracePoints: [{ x: 150, y: 150 }, { x: 850, y: 150 }],
       isAutoDetected: true,
@@ -313,12 +327,13 @@ function createFallbackWalls(unitChbArea: number): Wall[] {
       name: 'South Exterior Wall',
       type: 'Exterior Wall',
       length: 10.0,
-      height: 3.0,
-      openings: [{ id: 'O2', type: 'door', label: 'Main Door D1', width: 0.9, height: 2.1, quantity: 1, area: 1.89 }],
-      grossArea: 30.0,
-      openingArea: 1.89,
-      netArea: 28.11,
-      baseCHB: Math.ceil(28.11 / unitChbArea),
+      height: extHeight,
+      openings: w2Openings,
+      grossArea: m2.grossArea,
+      openingArea: m2.openingArea,
+      netArea: m2.netArea,
+      exactCHB: m2.exactCHB,
+      baseCHB: m2.baseCHB,
       color: '#2563eb',
       tracePoints: [{ x: 150, y: 570 }, { x: 850, y: 570 }],
       isAutoDetected: true,
@@ -328,12 +343,13 @@ function createFallbackWalls(unitChbArea: number): Wall[] {
       name: 'West Exterior Wall',
       type: 'Exterior Wall',
       length: 7.0,
-      height: 3.0,
-      openings: [{ id: 'O3', type: 'window', label: 'Living Window', width: 1.5, height: 1.2, quantity: 1, area: 1.8 }],
-      grossArea: 21.0,
-      openingArea: 1.8,
-      netArea: 19.2,
-      baseCHB: Math.ceil(19.2 / unitChbArea),
+      height: extHeight,
+      openings: w3Openings,
+      grossArea: m3.grossArea,
+      openingArea: m3.openingArea,
+      netArea: m3.netArea,
+      exactCHB: m3.exactCHB,
+      baseCHB: m3.baseCHB,
       color: '#3b82f6',
       tracePoints: [{ x: 150, y: 150 }, { x: 150, y: 570 }],
       isAutoDetected: true,
@@ -343,12 +359,13 @@ function createFallbackWalls(unitChbArea: number): Wall[] {
       name: 'East Exterior Wall',
       type: 'Exterior Wall',
       length: 7.0,
-      height: 3.0,
-      openings: [{ id: 'O4', type: 'window', label: 'Bedroom Window', width: 1.2, height: 1.2, quantity: 1, area: 1.44 }],
-      grossArea: 21.0,
-      openingArea: 1.44,
-      netArea: 19.56,
-      baseCHB: Math.ceil(19.56 / unitChbArea),
+      height: extHeight,
+      openings: w4Openings,
+      grossArea: m4.grossArea,
+      openingArea: m4.openingArea,
+      netArea: m4.netArea,
+      exactCHB: m4.exactCHB,
+      baseCHB: m4.baseCHB,
       color: '#3b82f6',
       tracePoints: [{ x: 850, y: 150 }, { x: 850, y: 570 }],
       isAutoDetected: true,

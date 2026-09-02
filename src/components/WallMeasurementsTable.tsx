@@ -65,6 +65,7 @@ export const WallMeasurementsTable: React.FC<Props> = ({
       grossArea: metrics.grossArea,
       openingArea: metrics.openingArea,
       netArea: metrics.netArea,
+      exactCHB: metrics.exactCHB,
       baseCHB: metrics.baseCHB,
     };
 

@@ -132,6 +132,7 @@ export const WallFormModal: React.FC<Props> = ({
       grossArea: metrics.grossArea,
       openingArea: metrics.openingArea,
       netArea: metrics.netArea,
+      exactCHB: metrics.exactCHB,
       baseCHB: metrics.baseCHB,
       color: initialWall?.color || '#2563eb',
       tracePoints: initialWall?.tracePoints,

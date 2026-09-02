@@ -5,13 +5,14 @@ import {
   formatProjectCalculationText,
 } from '../utils/calculator';
 import {
-  FileText,
   X,
   Copy,
   Check,
   Printer,
   Calculator,
   ShieldCheck,
+  Layers,
+  Scale,
 } from 'lucide-react';
 
 interface Props {
@@ -83,11 +84,11 @@ export const CalculationDetailsModal: React.FC<Props> = ({
                   ? `Calculation Details: ${wall.name}`
                   : `Project Calculation Audit & Engineering Breakdown`}
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-mono font-bold">
-                  Exact Math
+                  DPWH / ASTM Precision
                 </span>
               </h2>
               <p className="text-xs text-slate-500 font-medium">
-                Transparent step-by-step arithmetic without black-box estimation.
+                Transparent step-by-step arithmetic without exaggerated heuristics or black-box padding.
               </p>
             </div>
           </div>
@@ -140,7 +141,7 @@ export const CalculationDetailsModal: React.FC<Props> = ({
                   </div>
                 </div>
                 <div className="text-right text-xs text-slate-400 font-mono">
-                  <div>Base: {wallAudit.baseCHB} pcs</div>
+                  <div>Base: {wallAudit.baseCHB} pcs (exact: {wallAudit.exactCHB.toFixed(2)})</div>
                   <div>+{wastePercentage}% waste ({wallAudit.finalCHB - wallAudit.baseCHB} pcs)</div>
                 </div>
               </div>
@@ -151,29 +152,32 @@ export const CalculationDetailsModal: React.FC<Props> = ({
               {/* Formula reference cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                  <div className="font-sans font-bold text-slate-900 text-xs mb-1">
+                  <div className="font-sans font-bold text-slate-900 text-xs mb-1 flex items-center gap-1.5">
+                    <Scale className="w-3.5 h-3.5 text-blue-600" />
                     1. Unit Block Coverage Ratio
                   </div>
                   <div className="text-slate-500 text-[11px] mb-2 font-sans">
                     Derived from {chbSettings.lengthMm}mm × {chbSettings.heightMm}mm standard dimension.
                   </div>
                   <div className="bg-white p-2.5 rounded-xl border border-slate-200 text-blue-600 font-bold">
-                    Area = {chbSettings.lengthMm / 1000}m × {chbSettings.heightMm / 1000}m = {chbSettings.areaSqM.toFixed(4)} m²
+                    Area = {(chbSettings.lengthMm / 1000).toFixed(2)}m × {(chbSettings.heightMm / 1000).toFixed(2)}m = {chbSettings.areaSqM.toFixed(4)} m²
                   </div>
                   <div className="text-[11px] text-emerald-700 font-bold mt-1.5 font-sans">
-                    Coverage = 1 / {chbSettings.areaSqM.toFixed(4)} = {chbSettings.blocksPerSqM} pcs / m²
+                    Coverage = 1 ÷ {chbSettings.areaSqM.toFixed(4)} = {chbSettings.blocksPerSqM} pcs / m²
                   </div>
                 </div>
 
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                  <div className="font-sans font-bold text-slate-900 text-xs mb-1">
+                  <div className="font-sans font-bold text-slate-900 text-xs mb-1 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-blue-600" />
                     2. Net Masonry Area Formula
                   </div>
                   <div className="text-slate-500 text-[11px] mb-2 font-sans">
-                    Deducting total door and window opening schedule.
+                    Deducting total door, window openings, and RC columns.
                   </div>
                   <div className="bg-white p-2.5 rounded-xl border border-slate-200 text-blue-600 font-bold">
                     Net Area = {projectTotals.totalGrossAreaSqM.toFixed(2)}m² − {projectTotals.totalOpeningAreaSqM.toFixed(2)}m²
+                    {projectTotals.columnDeductionAreaSqM > 0 ? ` − ${projectTotals.columnDeductionAreaSqM.toFixed(2)}m²` : ''}
                   </div>
                   <div className="text-[11px] text-blue-700 font-bold mt-1.5 font-sans">
                     Total Net Masonry = {projectTotals.totalNetAreaSqM.toFixed(2)} m²
@@ -184,13 +188,14 @@ export const CalculationDetailsModal: React.FC<Props> = ({
               {/* Step 3: Base CHB Pieces */}
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
                 <div className="font-sans font-bold text-slate-900 text-xs mb-1">
-                  3. Base Hollow Blocks Required
+                  3. Base Hollow Blocks Quantity (Whole Units)
                 </div>
                 <div className="text-slate-500 text-[11px] mb-2 font-sans">
-                  Total Net Wall Area multiplied by Unit Coverage pieces/m² (rounded up to nearest whole block).
+                  Total Net Wall Area multiplied by Unit Coverage pieces/m²:
                 </div>
                 <div className="bg-white p-2.5 rounded-xl border border-slate-200 text-slate-800 font-bold">
-                  Base CHB = ⌈ {projectTotals.totalNetAreaSqM.toFixed(2)} m² × {chbSettings.blocksPerSqM} pcs/m² ⌉ = {projectTotals.baseCHBQuantity.toLocaleString()} pcs
+                  Exact: {projectTotals.totalNetAreaSqM.toFixed(2)} m² × {chbSettings.blocksPerSqM} pcs/m² = {projectTotals.exactBaseCHB.toFixed(2)} pcs
+                  <span className="text-blue-600 ml-2">→ Base Whole: ⌈{projectTotals.exactBaseCHB.toFixed(2)}⌉ = {projectTotals.baseCHBQuantity.toLocaleString()} pcs</span>
                 </div>
               </div>
 
@@ -214,11 +219,54 @@ export const CalculationDetailsModal: React.FC<Props> = ({
                     Auxiliary Materials
                   </div>
                   <div className="text-blue-300 font-bold">
-                    {projectTotals.mortarCementBags + projectTotals.plasterCementBags} Bags Cement
+                    {projectTotals.totalCementBags} Bags Cement (40kg)
                   </div>
                   <div className="text-amber-300 font-bold">
-                    {projectTotals.sandCubicMeters} m³ Sand
+                    {projectTotals.sandCubicMeters} m³ Washed Sand
                   </div>
+                  <div className="text-emerald-300 font-bold">
+                    {projectTotals.rebarPieces10mm} pcs 10mm RSB (6m)
+                  </div>
+                </div>
+              </div>
+
+              {/* Itemized Wall Breakdown Table */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                <div className="font-sans font-bold text-slate-900 text-xs mb-2">
+                  Itemized Wall Schedule Breakdown ({allWalls.length} Walls)
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-[11px] font-mono">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-500 font-sans">
+                        <th className="py-1.5 px-2">ID</th>
+                        <th className="py-1.5 px-2 font-sans">Wall Name</th>
+                        <th className="py-1.5 px-2 text-right">L × H (m)</th>
+                        <th className="py-1.5 px-2 text-right">Gross (m²)</th>
+                        <th className="py-1.5 px-2 text-right">Openings (m²)</th>
+                        <th className="py-1.5 px-2 text-right">Net Area (m²)</th>
+                        <th className="py-1.5 px-2 text-right text-blue-600 font-bold">Base (pcs)</th>
+                        <th className="py-1.5 px-2 text-right text-slate-700">+{wastePercentage}%</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {allWalls.map((w) => {
+                        const withW = Math.ceil(w.baseCHB * (1 + wastePercentage / 100));
+                        return (
+                          <tr key={w.id} className="hover:bg-slate-100/50">
+                            <td className="py-1.5 px-2 font-bold text-slate-900">{w.id}</td>
+                            <td className="py-1.5 px-2 font-sans truncate max-w-[140px]" title={w.name}>{w.name}</td>
+                            <td className="py-1.5 px-2 text-right">{w.length.toFixed(2)} × {w.height.toFixed(2)}</td>
+                            <td className="py-1.5 px-2 text-right">{w.grossArea.toFixed(2)}</td>
+                            <td className="py-1.5 px-2 text-right text-rose-600">{w.openingArea > 0 ? `-${w.openingArea.toFixed(2)}` : '0.00'}</td>
+                            <td className="py-1.5 px-2 text-right font-bold text-slate-900">{w.netArea.toFixed(2)}</td>
+                            <td className="py-1.5 px-2 text-right text-blue-600 font-bold">{w.baseCHB}</td>
+                            <td className="py-1.5 px-2 text-right font-bold text-slate-700">{withW}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>

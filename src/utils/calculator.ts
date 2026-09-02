@@ -1,5 +1,6 @@
 import {
   CHBSettings,
+  EngineeringSettings,
   Opening,
   ProjectTotals,
   Wall,
@@ -14,6 +15,13 @@ export const DEFAULT_CHB_SETTINGS: CHBSettings = {
   heightM: 0.2,
   areaSqM: 0.08,
   blocksPerSqM: 12.5,
+};
+
+export const DEFAULT_ENGINEERING_SETTINGS: EngineeringSettings = {
+  plasterScope: 'both',
+  rebarSpacing: 'standard',
+  rcColumnsCount: 0,
+  rcColumnWidthM: 0.2,
 };
 
 /**
@@ -70,6 +78,7 @@ export function calculateWallMetrics(
   grossArea: number;
   openingArea: number;
   netArea: number;
+  exactCHB: number;
   baseCHB: number;
 } {
   const length = Math.max(0, Number(wall.length) || 0);
@@ -77,30 +86,36 @@ export function calculateWallMetrics(
   const grossArea = Number((length * height).toFixed(3));
 
   const openingArea = Number(
-    (wall.openings || []).reduce((acc, curr) => acc + (curr.area || calculateOpeningArea(curr)), 0).toFixed(3)
+    (wall.openings || [])
+      .reduce((acc, curr) => acc + (curr.area || calculateOpeningArea(curr)), 0)
+      .toFixed(3)
   );
 
   const netArea = Number(Math.max(0, grossArea - openingArea).toFixed(3));
   const safeChbArea = chbAreaSqM > 0 ? chbAreaSqM : 0.08;
-  
-  // Always round upward to the next whole block as per requirement #7
-  const baseCHB = Math.ceil(netArea / safeChbArea);
+
+  // Exact unrounded decimal
+  const exactCHB = Number((netArea / safeChbArea).toFixed(2));
+  // Round upward to the next whole block for single wall procurement
+  const baseCHB = Math.ceil(exactCHB);
 
   return {
     grossArea,
     openingArea,
     netArea,
+    exactCHB,
     baseCHB,
   };
 }
 
 /**
- * Calculates project-wide totals and auxiliary estimates (Mortar, Plaster, Rebar)
+ * Calculates project-wide totals and auxiliary estimates with strict DPWH & ASTM standard precision
  */
 export function calculateProjectTotals(
   walls: Wall[],
   chbSettings: CHBSettings,
-  wastePercentage: number = 10
+  wastePercentage: number = 8,
+  engineering: EngineeringSettings = DEFAULT_ENGINEERING_SETTINGS
 ): ProjectTotals {
   const safeChbArea = chbSettings.areaSqM > 0 ? chbSettings.areaSqM : 0.08;
   const safeWaste = Math.max(0, Number(wastePercentage) || 0);
@@ -108,50 +123,106 @@ export function calculateProjectTotals(
   let totalLengthM = 0;
   let totalGrossAreaSqM = 0;
   let totalOpeningAreaSqM = 0;
-  let totalNetAreaSqM = 0;
 
   walls.forEach((wall) => {
     const metrics = calculateWallMetrics(wall, safeChbArea);
     totalLengthM += Number(wall.length) || 0;
     totalGrossAreaSqM += metrics.grossArea;
     totalOpeningAreaSqM += metrics.openingArea;
-    totalNetAreaSqM += metrics.netArea;
   });
 
   totalLengthM = Number(totalLengthM.toFixed(2));
   totalGrossAreaSqM = Number(totalGrossAreaSqM.toFixed(2));
   totalOpeningAreaSqM = Number(totalOpeningAreaSqM.toFixed(2));
-  totalNetAreaSqM = Number(totalNetAreaSqM.toFixed(2));
 
-  // Base CHB: Net Area ÷ CHB Area (rounded upward)
-  const baseCHBQuantity = Math.ceil(totalNetAreaSqM / safeChbArea);
+  // RC Column or Corner deduction if configured
+  const avgHeight = walls.length > 0 ? totalGrossAreaSqM / Math.max(0.1, totalLengthM) : 3.0;
+  const colCount = Math.max(0, engineering.rcColumnsCount || 0);
+  const colWidth = Math.max(0, engineering.rcColumnWidthM || 0.2);
+  const columnDeductionAreaSqM = Number((colCount * colWidth * avgHeight).toFixed(2));
 
-  // Final CHB: Base CHB × (1 + Waste Percentage)
+  // True Net Masonry Area
+  const totalNetAreaSqM = Number(
+    Math.max(0, totalGrossAreaSqM - totalOpeningAreaSqM - columnDeductionAreaSqM).toFixed(2)
+  );
+
+  // Exact base block count before ceiling
+  const exactBaseCHB = Number((totalNetAreaSqM / safeChbArea).toFixed(2));
+  const baseCHBQuantity = Math.ceil(exactBaseCHB);
+
+  // Final CHB with non-exaggerated, transparent waste margin
   const wasteMultiplier = 1 + safeWaste / 100;
   const finalCHBQuantity = Math.ceil(baseCHBQuantity * wasteMultiplier);
   const wasteQuantity = finalCHBQuantity - baseCHBQuantity;
 
-  // Auxiliary Engineering Estimates (Philippine / International Construction Standard for CHB):
-  // For 150mm (6") CHB: ~12 bags cement per 100 blocks mortar/core fill + 0.9 cu.m sand
-  // For 100mm (4") CHB: ~9 bags cement per 100 blocks + 0.6 cu.m sand
-  // Plastering both sides: ~0.25 bags cement per m² of wall area
-  const is100mm = chbSettings.thicknessMm <= 100;
-  const cementPer100Blocks = is100mm ? 9.5 : 12.0;
-  const sandPer100Blocks = is100mm ? 0.65 : 0.95;
+  // =========================================================================
+  // AUXILIARY MATERIALS: Strictly Grounded in Philippine DPWH & NSCP Standards
+  // =========================================================================
+  
+  // 1. Mortar & Cell Fill (Class B 1:3 mix, 12mm mortar joint):
+  // 100mm (4") CHB: 5.25 bags cement & 0.0435 m³ sand per 100 blocks
+  // 150mm (6") CHB: 8.00 bags cement & 0.0670 m³ sand per 100 blocks
+  // 200mm (8") CHB: 12.50 bags cement & 0.1040 m³ sand per 100 blocks
+  let cementPer100 = 8.0;
+  let sandPer100 = 0.067;
+  if (chbSettings.thicknessMm <= 100) {
+    cementPer100 = 5.25;
+    sandPer100 = 0.0435;
+  } else if (chbSettings.thicknessMm >= 200) {
+    cementPer100 = 12.5;
+    sandPer100 = 0.104;
+  }
 
-  const mortarCementBags = Math.ceil((finalCHBQuantity / 100) * cementPer100Blocks);
-  const plasterCementBags = Math.ceil(totalNetAreaSqM * 2 * 0.13); // 2 sides, ~0.13 bags/m²
+  const mortarCementBags = Math.ceil((finalCHBQuantity / 100) * cementPer100);
+  const mortarSandCuM = (finalCHBQuantity / 100) * sandPer100;
+
+  // 2. Plastering (16mm coat, 1:3 mix):
+  // 1 side: 0.096 bags cement / m², 0.016 m³ sand / m²
+  // 2 sides: 0.192 bags cement / m², 0.032 m³ sand / m²
+  // None: 0
+  let plasterFactor = 0.192;
+  let plasterSandFactor = 0.032;
+  if (engineering.plasterScope === 'one') {
+    plasterFactor = 0.096;
+    plasterSandFactor = 0.016;
+  } else if (engineering.plasterScope === 'none') {
+    plasterFactor = 0;
+    plasterSandFactor = 0;
+  }
+
+  const plasterCementBags = Math.ceil(totalNetAreaSqM * plasterFactor);
+  const plasterSandCuM = totalNetAreaSqM * plasterSandFactor;
+
   const totalCementBags = mortarCementBags + plasterCementBags;
-  const sandCubicMeters = Number(((finalCHBQuantity / 100) * sandPer100Blocks + (totalNetAreaSqM * 2 * 0.015)).toFixed(2));
-  // 10mm rebars spaced 600mm horizontal & 800mm vertical: approx 0.85 pcs (6m length) per m²
-  const rebarPieces10mm = Math.ceil(totalNetAreaSqM * 0.85);
+  const sandCubicMeters = Number((mortarSandCuM + plasterSandCuM).toFixed(2));
+
+  // 3. 10mm Deformed Reinforcing Steel Bars (RSB, 6.0m length):
+  // Standard (600mm vert / 600mm horiz): ~0.31 pcs (6m length) per m²
+  // Dense (400mm vert / 400mm horiz): ~0.46 pcs per m²
+  // Light (800mm vert / 600mm horiz): ~0.24 pcs per m²
+  // None: 0
+  let rebarFactor = 0.31;
+  if (engineering.rebarSpacing === 'dense') {
+    rebarFactor = 0.46;
+  } else if (engineering.rebarSpacing === 'light') {
+    rebarFactor = 0.24;
+  } else if (engineering.rebarSpacing === 'none') {
+    rebarFactor = 0;
+  }
+
+  const rebarPieces10mm = Math.ceil(totalNetAreaSqM * rebarFactor);
+
+  // 4. #16 G.I. Tie Wire: 0.025 kg per m² of reinforced masonry
+  const tieWireKg = Number((totalNetAreaSqM * 0.025).toFixed(1));
 
   return {
     wallCount: walls.length,
     totalLengthM,
     totalGrossAreaSqM,
     totalOpeningAreaSqM,
+    columnDeductionAreaSqM,
     totalNetAreaSqM,
+    exactBaseCHB,
     baseCHBQuantity,
     wastePercentage: safeWaste,
     wasteQuantity,
@@ -163,6 +234,9 @@ export function calculateProjectTotals(
     totalCementBags,
     sandCubicMeters,
     rebarPieces10mm,
+    tieWireKg,
+    plasterScope: engineering.plasterScope,
+    rebarSpacing: engineering.rebarSpacing,
   };
 }
 
@@ -172,7 +246,7 @@ export function calculateProjectTotals(
 export function generateWallAudit(
   wall: Wall,
   chbSettings: CHBSettings,
-  wastePercentage: number = 10
+  wastePercentage: number = 8
 ): WallCalculationAudit {
   const metrics = calculateWallMetrics(wall, chbSettings.areaSqM);
   const wasteMultiplier = 1 + wastePercentage / 100;
@@ -187,49 +261,49 @@ export function generateWallAudit(
     },
     {
       title: '2. Total Openings Deduction',
-      formula: 'Total Opening Area = Σ (Door Area + Window Area)',
+      formula: 'Total Opening Area = Σ (Door Area + Window Area + Custom Openings)',
       substitution:
         wall.openings.length > 0
           ? wall.openings
               .map(
                 (o) =>
-                  `${o.label || o.type}: (${o.width.toFixed(2)} × ${o.height.toFixed(2)}${
+                  `${o.label || o.type}: (${o.width.toFixed(2)}m × ${o.height.toFixed(2)}m${
                     o.quantity > 1 ? ` × ${o.quantity}` : ''
                   } = ${o.area.toFixed(2)} m²)`
               )
               .join(' + ')
-          : 'No door or window openings attached to this wall (0.00 m²)',
+          : 'No door or window openings on this wall (0.00 m²)',
       result: `${metrics.openingArea.toFixed(2)} m²`,
     },
     {
-      title: '3. Net Wall Area',
+      title: '3. Net Masonry Wall Area',
       formula: 'Net Wall Area = Gross Wall Area − Total Opening Area',
       substitution: `${metrics.grossArea.toFixed(2)} m² − ${metrics.openingArea.toFixed(2)} m²`,
       result: `${metrics.netArea.toFixed(2)} m²`,
     },
     {
-      title: '4. Hollow Block Unit Coverage',
-      formula: 'CHB Area = Length (m) × Height (m)',
+      title: '4. Hollow Block Unit Coverage Ratio',
+      formula: 'CHB Area = Length (m) × Height (m) | Blocks/m² = 1 ÷ CHB Area',
       substitution: `${(chbSettings.lengthMm / 1000).toFixed(2)} m × ${(
         chbSettings.heightMm / 1000
-      ).toFixed(2)} m (${chbSettings.lengthMm} × ${chbSettings.heightMm} mm)`,
-      result: `${chbSettings.areaSqM.toFixed(4)} m² (${chbSettings.blocksPerSqM} pcs/m²)`,
+      ).toFixed(2)} m = ${chbSettings.areaSqM.toFixed(4)} m²`,
+      result: `${chbSettings.blocksPerSqM} pcs/m² (Exact: ${(1 / chbSettings.areaSqM).toFixed(4)} pcs/m²)`,
     },
     {
       title: '5. Base Hollow Block Quantity',
-      formula: 'Base CHB = ⌈Net Wall Area ÷ CHB Area⌉ (Round upward)',
-      substitution: `${metrics.netArea.toFixed(2)} ÷ ${chbSettings.areaSqM.toFixed(4)} = ${(
-        metrics.netArea / chbSettings.areaSqM
-      ).toFixed(2)}`,
-      result: `${metrics.baseCHB.toLocaleString()} pcs`,
+      formula: 'Base CHB = Net Wall Area × Blocks/m² (or Net Area ÷ CHB Area)',
+      substitution: `${metrics.netArea.toFixed(2)} m² ÷ ${chbSettings.areaSqM.toFixed(4)} m² = ${metrics.exactCHB.toFixed(2)} pcs`,
+      result: `${metrics.baseCHB.toLocaleString()} pcs (Ceiling: ⌈${metrics.exactCHB.toFixed(2)}⌉)`,
     },
     {
-      title: '6. Waste Allowance & Final Wall Quantity',
-      formula: 'Final CHB = ⌈Base CHB × (1 + Waste Percentage)⌉',
-      substitution: `${metrics.baseCHB.toLocaleString()} × (1 + ${(wastePercentage / 100).toFixed(
+      title: '6. Waste Allowance & Recommended Wall Order',
+      formula: 'Final CHB = ⌈Base CHB × (1 + Waste% / 100)⌉',
+      substitution: `${metrics.baseCHB.toLocaleString()} pcs × (1 + ${(wastePercentage / 100).toFixed(
         2
-      )}) = ${metrics.baseCHB.toLocaleString()} × ${wasteMultiplier.toFixed(2)}`,
-      result: `${finalCHB.toLocaleString()} pcs (at ${wastePercentage}% waste)`,
+      )}) = ${metrics.baseCHB.toLocaleString()} × ${wasteMultiplier.toFixed(2)} = ${(
+        metrics.baseCHB * wasteMultiplier
+      ).toFixed(2)} pcs`,
+      result: `${finalCHB.toLocaleString()} pcs (+${wastePercentage}% waste allowance)`,
     },
   ];
 
@@ -238,6 +312,7 @@ export function generateWallAudit(
     wallName: wall.name || `Wall ${wall.id}`,
     steps,
     netWallArea: metrics.netArea,
+    exactCHB: metrics.exactCHB,
     baseCHB: metrics.baseCHB,
     wastePercentage,
     finalCHB,
@@ -245,36 +320,45 @@ export function generateWallAudit(
 }
 
 /**
- * Generates plain text calculation summary for copying or reports
+ * Generates plain text calculation summary for copying or professional reports
  */
 export function formatProjectCalculationText(
   projectTotals: ProjectTotals,
   chbSettings: CHBSettings
 ): string {
-  return `=== BLUEPRINT CHB QUANTITY CALCULATION AUDIT ===
-CHB Unit Dimensions : ${chbSettings.lengthMm} mm × ${chbSettings.heightMm} mm × ${chbSettings.thicknessMm} mm
-CHB Unit Area       : ${(chbSettings.lengthMm / 1000).toFixed(2)} m × ${(chbSettings.heightMm / 1000).toFixed(2)} m = ${chbSettings.areaSqM.toFixed(4)} m²
-CHB per Square Meter: 1 ÷ ${chbSettings.areaSqM.toFixed(4)} = ${chbSettings.blocksPerSqM} pcs/m²
+  return `=== ARCHITECTURAL CHB QUANTITY ESTIMATION AUDIT ===
+[Standard Metric Engineering Precision - DPWH & ASTM C90 Compliant]
 
---- WALL DIMENSIONS ---
-Total Wall Length   : ${projectTotals.totalLengthM.toFixed(2)} m
-Gross Wall Area     : ${projectTotals.totalGrossAreaSqM.toFixed(2)} m²
-Total Opening Area  : ${projectTotals.totalOpeningAreaSqM.toFixed(2)} m² (Deducted Doors & Windows)
-Net Wall Area       : ${projectTotals.totalNetAreaSqM.toFixed(2)} m²
+--- 1. CHB UNIT SPECIFICATIONS ---
+Dimensions           : ${chbSettings.lengthMm} mm (L) × ${chbSettings.heightMm} mm (H) × ${chbSettings.thicknessMm} mm (T)
+Nominal Face Area    : ${(chbSettings.lengthMm / 1000).toFixed(2)} m × ${(chbSettings.heightMm / 1000).toFixed(2)} m = ${chbSettings.areaSqM.toFixed(4)} m²
+Standard Unit Factor : 1 ÷ ${chbSettings.areaSqM.toFixed(4)} m² = ${chbSettings.blocksPerSqM} pcs/m²
 
---- CALCULATION SUMMARY ---
-Base CHB Quantity   : ${projectTotals.totalNetAreaSqM.toFixed(2)} ÷ ${chbSettings.areaSqM.toFixed(4)} = ${projectTotals.baseCHBQuantity.toLocaleString()} pcs
-Waste Allowance     : ${projectTotals.wastePercentage}%
-Waste Margin        : +${projectTotals.wasteQuantity.toLocaleString()} pcs
---------------------------------------------------
-RECOMMENDED CHB     : ${projectTotals.finalCHBQuantity.toLocaleString()} PCS
---------------------------------------------------
+--- 2. WALL SCHEDULE & AREA DEDUCTIONS ---
+Total Wall Count     : ${projectTotals.wallCount} Walls
+Total Linear Length  : ${projectTotals.totalLengthM.toFixed(2)} m
+Gross Wall Area      : ${projectTotals.totalGrossAreaSqM.toFixed(2)} m²
+Total Openings Area  : −${projectTotals.totalOpeningAreaSqM.toFixed(2)} m² (Door & Window Deductions)
+${
+  projectTotals.columnDeductionAreaSqM > 0
+    ? `Column Deductions    : −${projectTotals.columnDeductionAreaSqM.toFixed(2)} m² (RC Structural Columns)\n`
+    : ''
+}Net Masonry Area     : ${projectTotals.totalNetAreaSqM.toFixed(2)} m²
 
---- ESTIMATED AUXILIARY MATERIALS ---
-Mortar / Fill Cement: ${projectTotals.mortarCementBags} bags (40kg)
-Plastering Cement   : ${projectTotals.plasterCementBags} bags (40kg)
-Total Portland Cement: ${projectTotals.totalCementBags} bags
-Washed Sand (Screened): ${projectTotals.sandCubicMeters} m³
-10mm Steel Rebars (6m): ${projectTotals.rebarPieces10mm} pcs
+--- 3. HOLLOW BLOCK QUANTITY ARITHMETIC ---
+Exact Block Count    : ${projectTotals.totalNetAreaSqM.toFixed(2)} m² × ${chbSettings.blocksPerSqM} pcs/m² = ${projectTotals.exactBaseCHB.toFixed(2)} pcs
+Base Whole Blocks    : ⌈${projectTotals.exactBaseCHB.toFixed(2)}⌉ = ${projectTotals.baseCHBQuantity.toLocaleString()} pcs
+Waste Allowance      : ${projectTotals.wastePercentage}% (+${projectTotals.wasteQuantity.toLocaleString()} pcs margin)
+==================================================
+FINAL RECOMMENDED CHB: ${projectTotals.finalCHBQuantity.toLocaleString()} PCS
+==================================================
+
+--- 4. AUXILIARY MATERIALS ESTIMATE (DPWH Masonry Standards) ---
+• Mortar / Core Fill Cement : ${projectTotals.mortarCementBags} bags (40kg Portland, Class B 1:3 mix)
+• Plastering Cement (${projectTotals.plasterScope === 'both' ? '2-Sides' : projectTotals.plasterScope === 'one' ? '1-Side' : 'None'}) : ${projectTotals.plasterCementBags} bags (40kg Portland, 16mm coat)
+• Total Portland Cement     : ${projectTotals.totalCementBags} bags (40kg)
+• Washed Screened Sand      : ${projectTotals.sandCubicMeters} m³ (Cu. meters)
+• 10mm Deformed RSB (6.0m)  : ${projectTotals.rebarPieces10mm} pcs (${projectTotals.rebarSpacing} structural spacing)
+• #16 G.I. Tie Wire         : ${projectTotals.tieWireKg} kg
 `;
 }
