@@ -19,6 +19,18 @@ interface Props {
   selectedWall: Wall | null;
   selectedDoor: DesignerDoor | null;
   selectedWin: DesignerWindow | null;
+  selectedCount?: number;
+  selectedCountsByType?: {
+    shapes: number;
+    walls: number;
+    doors: number;
+    windows: number;
+    columns: number;
+    dimensions: number;
+  };
+  totalSelectedArea?: number;
+  onClearSelection?: () => void;
+  onDuplicateAllSelected?: () => void;
   onUpdateShape: (updated: DesignerRoomShape) => void;
   onDeleteShape: (shapeId: string) => void;
   onDuplicateShape: (shape: DesignerRoomShape) => void;
@@ -57,6 +69,11 @@ export const ShapeInspectorPanel: React.FC<Props> = ({
   selectedWall,
   selectedDoor,
   selectedWin,
+  selectedCount = 0,
+  selectedCountsByType,
+  totalSelectedArea = 0,
+  onClearSelection,
+  onDuplicateAllSelected,
   onUpdateShape,
   onDeleteShape,
   onDuplicateShape,
@@ -67,6 +84,118 @@ export const ShapeInspectorPanel: React.FC<Props> = ({
   onDeleteSelected,
   chbAreaSqM,
 }) => {
+  // 0. Multi-Selection Panel (when >1 items are selected via drag-select or multi-select)
+  if (selectedCount > 1) {
+    return (
+      <div className="p-4 space-y-4 text-xs font-sans animate-fade-in">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold">
+              {selectedCount}
+            </div>
+            <div>
+              <h4 className="font-bold text-slate-100 text-sm">Multi-Selection</h4>
+              <span className="text-[10px] text-indigo-300">{selectedCount} elements selected</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {onDuplicateAllSelected && (
+              <button
+                type="button"
+                onClick={onDuplicateAllSelected}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+                title="Duplicate All Selected"
+              >
+                <Copy className="w-3.5 h-3.5" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onDeleteSelected}
+              className="p-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 text-rose-300 hover:text-white transition-colors"
+              title="Delete All Selected Elements"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Breakdown Card */}
+        <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 space-y-2">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+            Selected Contents
+          </span>
+          <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
+            {selectedCountsByType?.shapes ? (
+              <div className="bg-slate-900/90 p-2 rounded-xl border border-slate-800 flex justify-between">
+                <span className="text-slate-400">Room Shapes:</span>
+                <span className="text-emerald-400 font-bold">{selectedCountsByType.shapes}</span>
+              </div>
+            ) : null}
+            {selectedCountsByType?.walls ? (
+              <div className="bg-slate-900/90 p-2 rounded-xl border border-slate-800 flex justify-between">
+                <span className="text-slate-400">Walls:</span>
+                <span className="text-cyan-400 font-bold">{selectedCountsByType.walls}</span>
+              </div>
+            ) : null}
+            {selectedCountsByType?.doors ? (
+              <div className="bg-slate-900/90 p-2 rounded-xl border border-slate-800 flex justify-between">
+                <span className="text-slate-400">Doors:</span>
+                <span className="text-amber-400 font-bold">{selectedCountsByType.doors}</span>
+              </div>
+            ) : null}
+            {selectedCountsByType?.windows ? (
+              <div className="bg-slate-900/90 p-2 rounded-xl border border-slate-800 flex justify-between">
+                <span className="text-slate-400">Windows:</span>
+                <span className="text-blue-400 font-bold">{selectedCountsByType.windows}</span>
+              </div>
+            ) : null}
+            {selectedCountsByType?.columns ? (
+              <div className="bg-slate-900/90 p-2 rounded-xl border border-slate-800 flex justify-between">
+                <span className="text-slate-400">Columns:</span>
+                <span className="text-purple-400 font-bold">{selectedCountsByType.columns}</span>
+              </div>
+            ) : null}
+            {selectedCountsByType?.dimensions ? (
+              <div className="bg-slate-900/90 p-2 rounded-xl border border-slate-800 flex justify-between">
+                <span className="text-slate-400">Dimensions:</span>
+                <span className="text-yellow-400 font-bold">{selectedCountsByType.dimensions}</span>
+              </div>
+            ) : null}
+          </div>
+
+          {totalSelectedArea > 0 && (
+            <div className="pt-2 border-t border-slate-800 flex justify-between items-center text-xs">
+              <span className="text-slate-300 font-medium">Combined Room Area:</span>
+              <span className="font-bold text-emerald-400 font-mono">{totalSelectedArea.toFixed(1)} m²</span>
+            </div>
+          )}
+        </div>
+
+        {/* Batch Action Buttons */}
+        <div className="space-y-2 pt-1">
+          <button
+            type="button"
+            onClick={onDeleteSelected}
+            className="w-full py-2 px-3 rounded-xl bg-rose-600/20 hover:bg-rose-600 border border-rose-500/40 text-rose-200 hover:text-white font-bold flex items-center justify-center gap-2 transition-all"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Delete Selected ({selectedCount} items)</span>
+          </button>
+
+          {onClearSelection && (
+            <button
+              type="button"
+              onClick={onClearSelection}
+              className="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-medium flex items-center justify-center gap-1.5 transition-all"
+            >
+              <span>Deselect All</span>
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
   // 1. Room Shape Selected
   if (selectedShape) {
     const area = Number((selectedShape.widthM * selectedShape.heightM).toFixed(2));

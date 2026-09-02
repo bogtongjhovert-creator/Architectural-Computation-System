@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Wall,
   Opening,
@@ -51,6 +51,11 @@ import {
   RotateCw,
   Box,
   Compass,
+  AlertTriangle,
+  Scan,
+  CheckSquare,
+  Eraser,
+  BoxSelect,
 } from 'lucide-react';
 
 interface Props {
@@ -64,6 +69,7 @@ interface Props {
 
 export type DrawTool =
   | 'select'
+  | 'marquee'
   | 'shape_rect'
   | 'shape_l'
   | 'partition'
@@ -181,15 +187,18 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
   const [isPanning, setIsPanning] = useState<boolean>(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  // Interactive Drawing & Selection states
+  // Interactive Drawing & Multi-Selection states
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [drawCurrent, setDrawCurrent] = useState<{ x: number; y: number } | null>(null);
-  const [selectedElement, setSelectedElement] = useState<SelectedElement | null>({
-    type: 'shape',
-    id: 'shape-living',
-  });
+  const [selectedElements, setSelectedElements] = useState<SelectedElement[]>([
+    { type: 'shape', id: 'shape-living' },
+  ]);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [snapInfo, setSnapInfo] = useState<{ x: number; y: number; type: 'corner' | 'edge' | 'grid' } | null>(null);
+
+  // Marquee Drag Selection Box state
+  const [marqueeBox, setMarqueeBox] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const [isMarqueeDragging, setIsMarqueeDragging] = useState<boolean>(false);
 
   // Dragging & Resizing shapes
   const [isDraggingShape, setIsDraggingShape] = useState<boolean>(false);
@@ -197,9 +206,23 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
   const [isResizingShape, setIsResizingShape] = useState<boolean>(false);
   const [resizeHandle, setResizeHandle] = useState<'nw' | 'ne' | 'se' | 'sw' | 'n' | 's' | 'e' | 'w' | null>(null);
 
-  // Sidebar navigation tab
+  // Multi-item dragging
+  const [isMultiDragging, setIsMultiDragging] = useState<boolean>(false);
+  const [multiDragStartCoords, setMultiDragStartCoords] = useState<{ x: number; y: number } | null>(null);
+  const [initialShapePositions, setInitialShapePositions] = useState<{ id: string; x: number; y: number }[]>([]);
+
+  // Dialog & Modal states
   const [sidebarTab, setSidebarTab] = useState<'palette' | 'inspector' | 'templates' | 'schedule'>('palette');
   const [showShortcutsModal, setShowShortcutsModal] = useState<boolean>(false);
+  const [showClearConfirmModal, setShowClearConfirmModal] = useState<boolean>(false);
+
+  // Quick helper for single selected element
+  const selectedElement = selectedElements.length === 1 ? selectedElements[0] : null;
+  const selectedElementIds = useMemo(() => new Set(selectedElements.map((e) => e.id)), [selectedElements]);
+
+  const setSelectedElement = useCallback((el: SelectedElement | null) => {
+    setSelectedElements(el ? [el] : []);
+  }, []);
 
   // Push to history
   const pushToHistory = useCallback(
@@ -213,7 +236,7 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
     [history, historyIndex]
   );
 
-  const handleUndo = () => {
+  const handleUndo = useCallback(() => {
     if (historyIndex > 0) {
       const prev = history[historyIndex - 1];
       setWalls(prev.walls);
@@ -224,11 +247,11 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       setColumns(prev.columns);
       if (prev.shapes) setShapes(prev.shapes);
       setHistoryIndex(historyIndex - 1);
-      setSelectedElement(null);
+      setSelectedElements([]);
     }
-  };
+  }, [history, historyIndex]);
 
-  const handleRedo = () => {
+  const handleRedo = useCallback(() => {
     if (historyIndex < history.length - 1) {
       const next = history[historyIndex + 1];
       setWalls(next.walls);
@@ -239,9 +262,9 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       setColumns(next.columns);
       if (next.shapes) setShapes(next.shapes);
       setHistoryIndex(historyIndex + 1);
-      setSelectedElement(null);
+      setSelectedElements([]);
     }
-  };
+  }, [history, historyIndex]);
 
   // Snapping helper with shape corner and edge alignment
   const snapToGridAndShapes = useCallback(
@@ -472,6 +495,288 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
     handleUpdateShape(rotated);
   };
 
+  // Multi-Selection and Batch Action Handlers
+  const selectedCountsByType = useMemo(() => {
+    const counts = { shapes: 0, walls: 0, doors: 0, windows: 0, columns: 0, dimensions: 0 };
+    selectedElements.forEach((el) => {
+      if (el.type === 'shape') counts.shapes++;
+      else if (el.type === 'wall') counts.walls++;
+      else if (el.type === 'door') counts.doors++;
+      else if (el.type === 'window') counts.windows++;
+      else if (el.type === 'column') counts.columns++;
+      else if (el.type === 'dimension') counts.dimensions++;
+    });
+    return counts;
+  }, [selectedElements]);
+
+  const totalSelectedArea = useMemo(() => {
+    const selectedShapeIds = new Set(
+      selectedElements.filter((e) => e.type === 'shape').map((e) => e.id)
+    );
+    return shapes
+      .filter((s) => selectedShapeIds.has(s.id))
+      .reduce((sum, s) => sum + s.widthM * s.heightM, 0);
+  }, [selectedElements, shapes]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedElements([]);
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    const all: SelectedElement[] = [
+      ...shapes.map((s) => ({ type: 'shape' as const, id: s.id })),
+      ...walls.map((w) => ({ type: 'wall' as const, id: w.id })),
+      ...doors.map((d) => ({ type: 'door' as const, id: d.id })),
+      ...windows.map((w) => ({ type: 'window' as const, id: w.id })),
+      ...columns.map((c) => ({ type: 'column' as const, id: c.id })),
+      ...dimensions.map((dim) => ({ type: 'dimension' as const, id: dim.id })),
+    ];
+    setSelectedElements(all);
+    setActiveTool('select');
+    setSidebarTab('inspector');
+  }, [shapes, walls, doors, windows, columns, dimensions]);
+
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedElements.length === 0) return;
+    const selectedIds = new Set(selectedElements.map((e) => e.id));
+
+    const nextShapes = shapes.filter((s) => !selectedIds.has(s.id));
+    const nextWalls = walls.filter((w) => !selectedIds.has(w.id));
+    const nextDoors = doors.filter((d) => !selectedIds.has(d.id));
+    const nextWindows = windows.filter((w) => !selectedIds.has(w.id));
+    const nextColumns = columns.filter((c) => !selectedIds.has(c.id));
+    const nextDimensions = dimensions.filter((dim) => !selectedIds.has(dim.id));
+
+    setShapes(nextShapes);
+    setDoors(nextDoors);
+    setWindows(nextWindows);
+    setColumns(nextColumns);
+    setDimensions(nextDimensions);
+
+    let finalWalls = nextWalls;
+    let finalRooms = rooms;
+    if (nextShapes.length !== shapes.length) {
+      const synced = syncShapesToWalls(nextShapes);
+      finalWalls = synced.walls.filter((w) => !selectedIds.has(w.id));
+      finalRooms = synced.rooms;
+      setWalls(finalWalls);
+      setRooms(finalRooms);
+    } else {
+      setWalls(finalWalls);
+    }
+
+    pushToHistory({
+      walls: finalWalls,
+      doors: nextDoors,
+      windows: nextWindows,
+      rooms: finalRooms,
+      dimensions: nextDimensions,
+      columns: nextColumns,
+      shapes: nextShapes,
+    });
+
+    setSelectedElements([]);
+  }, [selectedElements, shapes, walls, doors, windows, columns, dimensions, rooms, syncShapesToWalls, pushToHistory]);
+
+  const handleClearAll = useCallback(() => {
+    pushToHistory({
+      walls,
+      doors,
+      windows,
+      rooms,
+      dimensions,
+      columns,
+      shapes,
+    });
+
+    setShapes([]);
+    setWalls([]);
+    setDoors([]);
+    setWindows([]);
+    setRooms([]);
+    setDimensions([]);
+    setColumns([]);
+    setSelectedElements([]);
+    setShowClearConfirmModal(false);
+  }, [walls, doors, windows, rooms, dimensions, columns, shapes, pushToHistory]);
+
+  const handleDuplicateAllSelected = useCallback(() => {
+    if (selectedElements.length === 0) return;
+    const selectedIds = new Set(selectedElements.map((e) => e.id));
+    const offsetPx = 50;
+
+    const newShapesToAdd: DesignerRoomShape[] = [];
+    const newDoorsToAdd: DesignerDoor[] = [];
+    const newWindowsToAdd: DesignerWindow[] = [];
+    const newColsToAdd: DesignerColumn[] = [];
+    const newDimsToAdd: DesignerDimension[] = [];
+    const newSelected: SelectedElement[] = [];
+
+    shapes.forEach((s) => {
+      if (selectedIds.has(s.id)) {
+        const duplicated: DesignerRoomShape = {
+          ...s,
+          id: `shape-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+          name: `${s.name} (Copy)`,
+          x: s.x + offsetPx,
+          y: s.y + offsetPx,
+        };
+        newShapesToAdd.push(duplicated);
+        newSelected.push({ type: 'shape', id: duplicated.id });
+      }
+    });
+
+    doors.forEach((d) => {
+      if (selectedIds.has(d.id)) {
+        const duplicated: DesignerDoor = {
+          ...d,
+          id: `door-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+          x: d.x + offsetPx,
+          y: d.y + offsetPx,
+        };
+        newDoorsToAdd.push(duplicated);
+        newSelected.push({ type: 'door', id: duplicated.id });
+      }
+    });
+
+    windows.forEach((w) => {
+      if (selectedIds.has(w.id)) {
+        const duplicated: DesignerWindow = {
+          ...w,
+          id: `win-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+          x: w.x + offsetPx,
+          y: w.y + offsetPx,
+        };
+        newWindowsToAdd.push(duplicated);
+        newSelected.push({ type: 'window', id: duplicated.id });
+      }
+    });
+
+    columns.forEach((c) => {
+      if (selectedIds.has(c.id)) {
+        const duplicated: DesignerColumn = {
+          ...c,
+          id: `col-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+          x: c.x + offsetPx,
+          y: c.y + offsetPx,
+        };
+        newColsToAdd.push(duplicated);
+        newSelected.push({ type: 'column', id: duplicated.id });
+      }
+    });
+
+    dimensions.forEach((dim) => {
+      if (selectedIds.has(dim.id)) {
+        const duplicated: DesignerDimension = {
+          ...dim,
+          id: `dim-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+          p1: { x: dim.p1.x + offsetPx, y: dim.p1.y + offsetPx },
+          p2: { x: dim.p2.x + offsetPx, y: dim.p2.y + offsetPx },
+        };
+        newDimsToAdd.push(duplicated);
+        newSelected.push({ type: 'dimension', id: duplicated.id });
+      }
+    });
+
+    const nextShapes = [...shapes, ...newShapesToAdd];
+    const nextDoors = [...doors, ...newDoorsToAdd];
+    const nextWins = [...windows, ...newWindowsToAdd];
+    const nextCols = [...columns, ...newColsToAdd];
+    const nextDims = [...dimensions, ...newDimsToAdd];
+
+    setShapes(nextShapes);
+    setDoors(nextDoors);
+    setWindows(nextWins);
+    setColumns(nextCols);
+    setDimensions(nextDims);
+
+    const { walls: nextWalls, rooms: nextRooms } = syncShapesToWalls(nextShapes);
+
+    pushToHistory({
+      walls: nextWalls,
+      doors: nextDoors,
+      windows: nextWins,
+      rooms: nextRooms,
+      dimensions: nextDims,
+      columns: nextCols,
+      shapes: nextShapes,
+    });
+
+    setSelectedElements(newSelected);
+  }, [selectedElements, shapes, doors, windows, columns, dimensions, syncShapesToWalls, pushToHistory]);
+
+  // Find all elements enclosed or intersected by a Marquee selection box
+  const getElementsInMarquee = useCallback(
+    (box: { x1: number; y1: number; x2: number; y2: number }): SelectedElement[] => {
+      const minX = Math.min(box.x1, box.x2);
+      const maxX = Math.max(box.x1, box.x2);
+      const minY = Math.min(box.y1, box.y2);
+      const maxY = Math.max(box.y1, box.y2);
+
+      const matched: SelectedElement[] = [];
+
+      shapes.forEach((s) => {
+        const wPx = s.widthM * SCALE_PPM;
+        const hPx = s.heightM * SCALE_PPM;
+        const sx1 = s.x - wPx / 2;
+        const sx2 = s.x + wPx / 2;
+        const sy1 = s.y - hPx / 2;
+        const sy2 = s.y + hPx / 2;
+        if (sx1 <= maxX && sx2 >= minX && sy1 <= maxY && sy2 >= minY) {
+          matched.push({ type: 'shape', id: s.id });
+        }
+      });
+
+      walls.forEach((w) => {
+        if (w.tracePoints && w.tracePoints.length >= 2) {
+          const p1 = w.tracePoints[0];
+          const p2 = w.tracePoints[1];
+          const wx1 = Math.min(p1.x, p2.x);
+          const wx2 = Math.max(p1.x, p2.x);
+          const wy1 = Math.min(p1.y, p2.y);
+          const wy2 = Math.max(p1.y, p2.y);
+          if (wx1 <= maxX && wx2 >= minX && wy1 <= maxY && wy2 >= minY) {
+            matched.push({ type: 'wall', id: w.id });
+          }
+        }
+      });
+
+      doors.forEach((d) => {
+        const w = d.widthM * SCALE_PPM;
+        if (d.x + w / 2 >= minX && d.x - w / 2 <= maxX && d.y + 14 >= minY && d.y - 14 <= maxY) {
+          matched.push({ type: 'door', id: d.id });
+        }
+      });
+
+      windows.forEach((win) => {
+        const w = win.widthM * SCALE_PPM;
+        if (win.x + w / 2 >= minX && win.x - w / 2 <= maxX && win.y + 14 >= minY && win.y - 14 <= maxY) {
+          matched.push({ type: 'window', id: win.id });
+        }
+      });
+
+      columns.forEach((col) => {
+        const size = col.sizeM * SCALE_PPM;
+        if (col.x + size / 2 >= minX && col.x - size / 2 <= maxX && col.y + size / 2 >= minY && col.y - size / 2 <= maxY) {
+          matched.push({ type: 'column', id: col.id });
+        }
+      });
+
+      dimensions.forEach((dim) => {
+        const dx1 = Math.min(dim.p1.x, dim.p2.x);
+        const dx2 = Math.max(dim.p1.x, dim.p2.x);
+        const dy1 = Math.min(dim.p1.y, dim.p2.y);
+        const dy2 = Math.max(dim.p1.y, dim.p2.y);
+        if (dx1 <= maxX && dx2 >= minX && dy1 <= maxY && dy2 >= minY) {
+          matched.push({ type: 'dimension', id: dim.id });
+        }
+      });
+
+      return matched;
+    },
+    [shapes, walls, doors, windows, columns, dimensions]
+  );
+
   // Punch Door onto a Shape's specific wall (North, South, East, West)
   const handleAddDoorToSide = (shape: DesignerRoomShape, side: 'north' | 'south' | 'east' | 'west') => {
     const wPx = shape.widthM * SCALE_PPM;
@@ -595,7 +900,7 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
     const coords = getCanvasCoords(e);
 
     // Pan viewport via middle click or pan tool
-    if (e.button === 1 || activeTool === 'pan' || (activeTool === 'select' && e.shiftKey)) {
+    if (e.button === 1 || activeTool === 'pan' || ((activeTool === 'select' || activeTool === 'marquee') && e.altKey)) {
       setIsPanning(true);
       setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
       return;
@@ -603,11 +908,11 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
 
     if (e.button !== 0) return;
 
-    // SELECT TOOL
-    if (activeTool === 'select') {
-      // Check if clicking a resize handle of currently selected shape
-      if (selectedElement?.type === 'shape') {
-        const shape = shapes.find((s) => s.id === selectedElement.id);
+    // SELECT & MARQUEE TOOL
+    if (activeTool === 'select' || activeTool === 'marquee') {
+      // 1. Check if clicking a resize handle of currently single selected shape
+      if (selectedElements.length === 1 && selectedElements[0].type === 'shape') {
+        const shape = shapes.find((s) => s.id === selectedElements[0].id);
         if (shape) {
           const wPx = shape.widthM * SCALE_PPM;
           const hPx = shape.heightM * SCALE_PPM;
@@ -640,15 +945,51 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
         }
       }
 
+      // 2. Check if clicking directly on an element
       const found = findElementAtCoords(coords.rawX, coords.rawY);
-      setSelectedElement(found);
-      if (found && found.type === 'shape') {
-        const shape = shapes.find((s) => s.id === found.id);
-        if (shape) {
-          setIsDraggingShape(true);
-          setDragShapeStartOffset({ x: coords.rawX - shape.x, y: coords.rawY - shape.y });
+
+      if (found) {
+        if (e.shiftKey) {
+          // Toggle item in multi-selection
+          if (selectedElementIds.has(found.id)) {
+            setSelectedElements((prev) => prev.filter((item) => item.id !== found.id));
+          } else {
+            setSelectedElements((prev) => [...prev, found]);
+            setSidebarTab('inspector');
+          }
+        } else {
+          // If clicked item is already part of a multi-selection, initiate multi-drag
+          if (selectedElementIds.has(found.id) && selectedElements.length > 1) {
+            setIsMultiDragging(true);
+            setMultiDragStartCoords({ x: coords.rawX, y: coords.rawY });
+            setInitialShapePositions(shapes.map((s) => ({ id: s.id, x: s.x, y: s.y })));
+          } else {
+            // Otherwise, make this single item selected and start dragging if it's a shape
+            setSelectedElements([found]);
+            setSidebarTab('inspector');
+            if (found.type === 'shape') {
+              const shape = shapes.find((s) => s.id === found.id);
+              if (shape) {
+                setIsDraggingShape(true);
+                setDragShapeStartOffset({ x: coords.rawX - shape.x, y: coords.rawY - shape.y });
+              }
+            }
+          }
         }
+        return;
       }
+
+      // 3. Clicked empty space on canvas -> Clear or start Drag Marquee Selection Box
+      if (!e.shiftKey) {
+        setSelectedElements([]);
+      }
+      setIsMarqueeDragging(true);
+      setMarqueeBox({
+        x1: coords.rawX,
+        y1: coords.rawY,
+        x2: coords.rawX,
+        y2: coords.rawY,
+      });
       return;
     }
 
@@ -673,7 +1014,7 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       const nextDoors = [...doors, newDoor];
       setDoors(nextDoors);
       pushToHistory({ walls, doors: nextDoors, windows, rooms, dimensions, columns, shapes });
-      setSelectedElement({ type: 'door', id: newDoor.id });
+      setSelectedElements([{ type: 'door', id: newDoor.id }]);
       return;
     }
 
@@ -690,7 +1031,7 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       const nextWins = [...windows, newWin];
       setWindows(nextWins);
       pushToHistory({ walls, doors, windows: nextWins, rooms, dimensions, columns, shapes });
-      setSelectedElement({ type: 'window', id: newWin.id });
+      setSelectedElements([{ type: 'window', id: newWin.id }]);
       return;
     }
 
@@ -705,7 +1046,7 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       const nextCols = [...columns, newCol];
       setColumns(nextCols);
       pushToHistory({ walls, doors, windows, rooms, dimensions, columns: nextCols, shapes });
-      setSelectedElement({ type: 'column', id: newCol.id });
+      setSelectedElements([{ type: 'column', id: newCol.id }]);
       return;
     }
   };
@@ -721,9 +1062,41 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
     setCursorPos({ x: coords.rawX, y: coords.rawY });
     setSnapInfo(coords.snapType !== 'grid' ? { x: coords.x, y: coords.y, type: coords.snapType } : null);
 
+    // Expanding Marquee Drag Selection Box
+    if (isMarqueeDragging && marqueeBox) {
+      setMarqueeBox({
+        ...marqueeBox,
+        x2: coords.rawX,
+        y2: coords.rawY,
+      });
+      return;
+    }
+
+    // Multi-Item Dragging
+    if (isMultiDragging && multiDragStartCoords && initialShapePositions.length > 0) {
+      const rawDx = coords.rawX - multiDragStartCoords.x;
+      const rawDy = coords.rawY - multiDragStartCoords.y;
+      const snapPx = gridSnapMeters * SCALE_PPM;
+      const snappedDx = Math.round(rawDx / snapPx) * snapPx;
+      const snappedDy = Math.round(rawDy / snapPx) * snapPx;
+
+      const nextShapes = shapes.map((s) => {
+        if (selectedElementIds.has(s.id)) {
+          const init = initialShapePositions.find((p) => p.id === s.id);
+          if (init) {
+            return { ...s, x: init.x + snappedDx, y: init.y + snappedDy };
+          }
+        }
+        return s;
+      });
+      setShapes(nextShapes);
+      syncShapesToWalls(nextShapes);
+      return;
+    }
+
     // Resizing shape
-    if (isResizingShape && selectedElement?.type === 'shape' && resizeHandle) {
-      const shape = shapes.find((s) => s.id === selectedElement.id);
+    if (isResizingShape && selectedElements.length === 1 && selectedElements[0].type === 'shape' && resizeHandle) {
+      const shape = shapes.find((s) => s.id === selectedElements[0].id);
       if (shape) {
         let newWidth = shape.widthM;
         let newHeight = shape.heightM;
@@ -753,9 +1126,9 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       return;
     }
 
-    // Dragging shape
-    if (isDraggingShape && selectedElement?.type === 'shape' && dragShapeStartOffset) {
-      const shape = shapes.find((s) => s.id === selectedElement.id);
+    // Dragging single shape
+    if (isDraggingShape && selectedElements.length === 1 && selectedElements[0].type === 'shape' && dragShapeStartOffset) {
+      const shape = shapes.find((s) => s.id === selectedElements[0].id);
       if (shape) {
         const rawNewX = coords.rawX - dragShapeStartOffset.x;
         const rawNewY = coords.rawY - dragShapeStartOffset.y;
@@ -782,9 +1155,44 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
   };
 
   // Mouse Up handler
-  const handleMouseUp = () => {
+  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (isPanning) {
       setIsPanning(false);
+      return;
+    }
+
+    // Finish Marquee Drag Selection
+    if (isMarqueeDragging && marqueeBox) {
+      const dx = Math.abs(marqueeBox.x2 - marqueeBox.x1);
+      const dy = Math.abs(marqueeBox.y2 - marqueeBox.y1);
+
+      if (dx > 5 || dy > 5) {
+        const found = getElementsInMarquee(marqueeBox);
+        if (e.shiftKey) {
+          // Add newly found items to existing selection
+          setSelectedElements((prev) => {
+            const existingIds = new Set(prev.map((p) => p.id));
+            const newItems = found.filter((f) => !existingIds.has(f.id));
+            return [...prev, ...newItems];
+          });
+        } else {
+          setSelectedElements(found);
+        }
+        if (found.length > 0) {
+          setSidebarTab('inspector');
+        }
+      }
+      setIsMarqueeDragging(false);
+      setMarqueeBox(null);
+      return;
+    }
+
+    // Finish Multi-Item Drag
+    if (isMultiDragging) {
+      setIsMultiDragging(false);
+      setMultiDragStartCoords(null);
+      setInitialShapePositions([]);
+      pushToHistory({ walls, doors, windows, rooms, dimensions, columns, shapes });
       return;
     }
 
@@ -853,7 +1261,7 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
         shapes: nextShapes,
       });
 
-      setSelectedElement({ type: 'shape', id: newShape.id });
+      setSelectedElements([{ type: 'shape', id: newShape.id }]);
       setActiveTool('select');
       setSidebarTab('inspector');
     }
@@ -880,7 +1288,7 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       const nextWalls = [...walls, newWall];
       setWalls(nextWalls);
       pushToHistory({ walls: nextWalls, doors, windows, rooms, dimensions, columns, shapes });
-      setSelectedElement({ type: 'wall', id: newWall.id });
+      setSelectedElements([{ type: 'wall', id: newWall.id }]);
       setActiveTool('select');
     }
 
@@ -897,13 +1305,99 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       const nextDims = [...dimensions, newDim];
       setDimensions(nextDims);
       pushToHistory({ walls, doors, windows, rooms, dimensions: nextDims, columns, shapes });
-      setSelectedElement({ type: 'dimension', id: newDim.id });
+      setSelectedElements([{ type: 'dimension', id: newDim.id }]);
       setActiveTool('select');
     }
 
     setDrawStart(null);
     setDrawCurrent(null);
   };
+
+  // Keyboard Shortcuts Listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isOpen) return;
+
+      const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (targetTag === 'input' || targetTag === 'textarea' || targetTag === 'select') {
+        return;
+      }
+
+      // 1. Delete / Backspace: Delete selected
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedElements.length > 0) {
+          e.preventDefault();
+          handleDeleteSelected();
+        }
+      }
+
+      // 2. Select All (Ctrl+A or Cmd+A)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        handleSelectAll();
+      }
+
+      // 3. Clear All (Ctrl+Shift+Delete)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'Delete' || e.key === 'Backspace')) {
+        e.preventDefault();
+        setShowClearConfirmModal(true);
+      }
+
+      // 4. Escape: Deselect all / dismiss dialogs
+      if (e.key === 'Escape') {
+        if (showClearConfirmModal) {
+          setShowClearConfirmModal(false);
+        } else if (showShortcutsModal) {
+          setShowShortcutsModal(false);
+        } else {
+          setSelectedElements([]);
+          setDrawStart(null);
+          setDrawCurrent(null);
+          setMarqueeBox(null);
+          setIsMarqueeDragging(false);
+        }
+      }
+
+      // 5. Undo / Redo
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+
+      // 6. Tool switching shortcuts
+      if (e.key.toLowerCase() === 'v') setActiveTool('select');
+      if (e.key.toLowerCase() === 's') setActiveTool('marquee');
+      if (e.key.toLowerCase() === 'r') {
+        setActiveTool('shape_rect');
+        setSidebarTab('inspector');
+      }
+      if (e.key.toLowerCase() === 'w') setActiveTool('partition');
+      if (e.key.toLowerCase() === 'd') setActiveTool('door');
+      if (e.key.toLowerCase() === 'n') setActiveTool('window');
+      if (e.key.toLowerCase() === 'm') setActiveTool('dimension');
+      if (e.key.toLowerCase() === 'h') setActiveTool('pan');
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    isOpen,
+    selectedElements,
+    showClearConfirmModal,
+    showShortcutsModal,
+    handleDeleteSelected,
+    handleSelectAll,
+    handleUndo,
+    handleRedo,
+  ]);
 
   // Zoom Canvas via Wheel
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -978,7 +1472,8 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
 
     // 2. Draw Room Shapes (Fills & Dimensions)
     shapes.forEach((shape) => {
-      const isSelected = selectedElement?.type === 'shape' && selectedElement.id === shape.id;
+      const isSelected = selectedElementIds.has(shape.id);
+      const isSingleSelected = isSelected && selectedElements.length === 1;
       const wPx = shape.widthM * SCALE_PPM;
       const hPx = shape.heightM * SCALE_PPM;
       const x1 = shape.x - wPx / 2;
@@ -987,8 +1482,8 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       // Room Area Fill
       ctx.fillStyle = isSelected
         ? isBp
-          ? 'rgba(14, 165, 233, 0.22)'
-          : 'rgba(16, 185, 129, 0.18)'
+          ? 'rgba(14, 165, 233, 0.25)'
+          : 'rgba(16, 185, 129, 0.22)'
         : isBp
         ? 'rgba(56, 189, 248, 0.08)'
         : isDark
@@ -1033,22 +1528,24 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
         // East
         ctx.fillText(`${shape.heightM.toFixed(2)} m`, x1 + wPx + 24, shape.y);
 
-        // Corner Resize Handles
-        const corners = [
-          { x: x1, y: y1 },
-          { x: x1 + wPx, y: y1 },
-          { x: x1 + wPx, y: y1 + hPx },
-          { x: x1, y: y1 + hPx },
-        ];
-        corners.forEach((c) => {
-          ctx.fillStyle = '#10b981';
-          ctx.beginPath();
-          ctx.arc(c.x, c.y, 5, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-        });
+        // Corner Resize Handles (shown for single selected shape)
+        if (isSingleSelected) {
+          const corners = [
+            { x: x1, y: y1 },
+            { x: x1 + wPx, y: y1 },
+            { x: x1 + wPx, y: y1 + hPx },
+            { x: x1, y: y1 + hPx },
+          ];
+          corners.forEach((c) => {
+            ctx.fillStyle = '#10b981';
+            ctx.beginPath();
+            ctx.arc(c.x, c.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          });
+        }
       }
     });
 
@@ -1057,7 +1554,7 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       if (!wall.tracePoints || wall.tracePoints.length < 2) return;
       const p1 = wall.tracePoints[0];
       const p2 = wall.tracePoints[1];
-      const isSelected = selectedElement?.type === 'wall' && selectedElement.id === wall.id;
+      const isSelected = selectedElementIds.has(wall.id);
 
       // Masonry wall stroke
       ctx.strokeStyle = isSelected
@@ -1071,23 +1568,31 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
         : isBp
         ? '#7dd3fc'
         : '#64748b';
-      ctx.lineWidth = wall.type === 'Exterior Wall' ? 7 : 4.5;
+      ctx.lineWidth = wall.type === 'Exterior Wall' ? (isSelected ? 8.5 : 7) : isSelected ? 6 : 4.5;
       ctx.lineCap = 'square';
       ctx.beginPath();
       ctx.moveTo(p1.x, p1.y);
       ctx.lineTo(p2.x, p2.y);
       ctx.stroke();
+
+      if (isSelected) {
+        ctx.fillStyle = '#38bdf8';
+        ctx.beginPath();
+        ctx.arc(p1.x, p1.y, 4, 0, Math.PI * 2);
+        ctx.arc(p2.x, p2.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
     });
 
     // 4. Draw Windows
     windows.forEach((win) => {
-      const isSelected = selectedElement?.type === 'window' && selectedElement.id === win.id;
+      const isSelected = selectedElementIds.has(win.id);
       const wPx = win.widthM * SCALE_PPM;
       ctx.fillStyle = isBp ? '#0c2340' : isDark ? '#090d16' : '#ffffff';
       ctx.fillRect(win.x - wPx / 2, win.y - 4, wPx, 8);
 
       ctx.strokeStyle = isSelected ? '#10b981' : isBp ? '#38bdf8' : '#0284c7';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = isSelected ? 3 : 2;
       ctx.strokeRect(win.x - wPx / 2, win.y - 4, wPx, 8);
 
       // Glass line
@@ -1099,7 +1604,7 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
 
     // 5. Draw Doors
     doors.forEach((door) => {
-      const isSelected = selectedElement?.type === 'door' && selectedElement.id === door.id;
+      const isSelected = selectedElementIds.has(door.id);
       const wPx = door.widthM * SCALE_PPM;
 
       ctx.fillStyle = isBp ? '#0c2340' : isDark ? '#090d16' : '#ffffff';
@@ -1107,15 +1612,15 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
 
       // Door Leaf
       ctx.strokeStyle = isSelected ? '#10b981' : '#f59e0b';
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = isSelected ? 3.5 : 2.5;
       ctx.beginPath();
       ctx.moveTo(door.x - wPx / 2, door.y);
       ctx.lineTo(door.x - wPx / 2, door.y - wPx);
       ctx.stroke();
 
       // Swing Arc
-      ctx.strokeStyle = 'rgba(245, 158, 11, 0.5)';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = isSelected ? 'rgba(16, 185, 129, 0.7)' : 'rgba(245, 158, 11, 0.5)';
+      ctx.lineWidth = isSelected ? 1.5 : 1;
       ctx.setLineDash([3, 3]);
       ctx.beginPath();
       ctx.arc(door.x - wPx / 2, door.y, wPx, -Math.PI / 2, 0, false);
@@ -1125,15 +1630,36 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
 
     // 6. Draw Columns
     columns.forEach((col) => {
+      const isSelected = selectedElementIds.has(col.id);
       const sizePx = col.sizeM * SCALE_PPM;
-      ctx.fillStyle = isBp ? '#38bdf8' : '#334155';
+      ctx.fillStyle = isSelected ? '#10b981' : isBp ? '#38bdf8' : '#334155';
       ctx.fillRect(col.x - sizePx / 2, col.y - sizePx / 2, sizePx, sizePx);
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = isSelected ? 2.5 : 1.5;
       ctx.strokeRect(col.x - sizePx / 2, col.y - sizePx / 2, sizePx, sizePx);
     });
 
-    // 7. Interactive Drawing Shape Preview
+    // 7. Draw Dimensions
+    dimensions.forEach((dim) => {
+      const isSelected = selectedElementIds.has(dim.id);
+      ctx.strokeStyle = isSelected ? '#10b981' : '#eab308';
+      ctx.lineWidth = isSelected ? 2 : 1;
+      ctx.setLineDash([2, 2]);
+      ctx.beginPath();
+      ctx.moveTo(dim.p1.x, dim.p1.y);
+      ctx.lineTo(dim.p2.x, dim.p2.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const midX = (dim.p1.x + dim.p2.x) / 2;
+      const midY = (dim.p1.y + dim.p2.y) / 2;
+      ctx.fillStyle = isSelected ? '#10b981' : '#eab308';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(dim.label, midX, midY - 6);
+    });
+
+    // 8. Interactive Drawing Shape Preview
     if (drawStart && drawCurrent && activeTool === 'shape_rect') {
       const minX = Math.min(drawStart.x, drawCurrent.x);
       const maxX = Math.max(drawStart.x, drawCurrent.x);
@@ -1159,7 +1685,40 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
       ctx.fillText(`${wM}m × ${hM}m (${area} m²)`, minX + w / 2, minY + h / 2);
     }
 
-    // 8. Snap Indicator
+    // 9. Marquee Drag Selection Box Overlay
+    if (marqueeBox) {
+      const minX = Math.min(marqueeBox.x1, marqueeBox.x2);
+      const maxX = Math.max(marqueeBox.x1, marqueeBox.x2);
+      const minY = Math.min(marqueeBox.y1, marqueeBox.y2);
+      const maxY = Math.max(marqueeBox.y1, marqueeBox.y2);
+      const w = maxX - minX;
+      const h = maxY - minY;
+
+      if (w > 2 || h > 2) {
+        ctx.fillStyle = 'rgba(14, 165, 233, 0.15)';
+        ctx.fillRect(minX, minY, w, h);
+
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(minX, minY, w, h);
+        ctx.setLineDash([]);
+
+        // Small corner accent handles
+        const corners = [
+          { x: minX, y: minY },
+          { x: maxX, y: minY },
+          { x: maxX, y: maxY },
+          { x: minX, y: maxY },
+        ];
+        ctx.fillStyle = '#38bdf8';
+        corners.forEach((c) => {
+          ctx.fillRect(c.x - 3, c.y - 3, 6, 6);
+        });
+      }
+    }
+
+    // 10. Snap Indicator
     if (snapInfo) {
       ctx.strokeStyle = '#10b981';
       ctx.lineWidth = 2;
@@ -1188,10 +1747,13 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
     gridSnapMeters,
     pan,
     zoom,
-    selectedElement,
+    selectedElements,
+    selectedElementIds,
+    marqueeBox,
     snapInfo,
     isResizingShape,
     isDraggingShape,
+    isMultiDragging,
   ]);
 
   // Derived Totals
@@ -1204,10 +1766,11 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
   const estimatedFloorArea = shapes.reduce((sum, s) => sum + s.widthM * s.heightM, 0) || 72.0;
 
   // Selected Objects
-  const activeSelectedShape = selectedElement?.type === 'shape' ? shapes.find((s) => s.id === selectedElement.id) || null : null;
-  const activeSelectedWall = selectedElement?.type === 'wall' ? walls.find((w) => w.id === selectedElement.id) || null : null;
-  const activeSelectedDoor = selectedElement?.type === 'door' ? doors.find((d) => d.id === selectedElement.id) || null : null;
-  const activeSelectedWin = selectedElement?.type === 'window' ? windows.find((w) => w.id === selectedElement.id) || null : null;
+  const singleSelected = selectedElements.length === 1 ? selectedElements[0] : null;
+  const activeSelectedShape = singleSelected?.type === 'shape' ? shapes.find((s) => s.id === singleSelected.id) || null : null;
+  const activeSelectedWall = singleSelected?.type === 'wall' ? walls.find((w) => w.id === singleSelected.id) || null : null;
+  const activeSelectedDoor = singleSelected?.type === 'door' ? doors.find((d) => d.id === singleSelected.id) || null : null;
+  const activeSelectedWin = singleSelected?.type === 'window' ? windows.find((w) => w.id === singleSelected.id) || null : null;
 
   // Apply to Main Project
   const handleApplyToProject = () => {
@@ -1266,6 +1829,29 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2">
+            {/* Quick Actions (Select All, Clear / Delete All) */}
+            <button
+              type="button"
+              onClick={handleSelectAll}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs border border-slate-700 transition-colors"
+              title="Select All Elements (Ctrl+A)"
+            >
+              <CheckSquare className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden sm:inline">Select All</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowClearConfirmModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 font-medium text-xs border border-rose-800/50 transition-colors"
+              title="Delete All Elements and Reset Blueprint"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <span className="hidden sm:inline">Delete All</span>
+            </button>
+
+            <div className="h-4 w-px bg-slate-800 mx-1 hidden sm:block" />
+
             <button
               type="button"
               onClick={handleDownloadImage}
@@ -1330,11 +1916,26 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
                       ? 'bg-indigo-600 text-white shadow-sm'
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                   }`}
-                  title="Select, Move & Resize Shape (V)"
+                  title="Select, Move & Resize (V) - Click item or drag on empty space to marquee select"
                 >
                   <MousePointer2 className="w-3.5 h-3.5" />
                   <span>Select</span>
                   <kbd className="text-[9px] bg-slate-950/60 px-1 rounded text-slate-300">V</kbd>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTool('marquee')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
+                    activeTool === 'marquee'
+                      ? 'bg-sky-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
+                  title="Drag-Select Multiple Items (S)"
+                >
+                  <BoxSelect className="w-3.5 h-3.5" />
+                  <span>Drag Select</span>
+                  <kbd className="text-[9px] bg-slate-950/60 px-1 rounded text-slate-300">S</kbd>
                 </button>
 
                 <button
@@ -1411,7 +2012,7 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
                 </button>
               </div>
 
-              {/* Undo / Redo & Snap Controls */}
+              {/* Undo / Redo, Selection Actions & Snap Controls */}
               <div className="pointer-events-auto flex items-center gap-1.5 bg-slate-900/90 backdrop-blur-md border border-slate-800 p-1.5 rounded-2xl shadow-xl">
                 <button
                   type="button"
@@ -1433,7 +2034,31 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
                   <Redo2 className="w-4 h-4" />
                 </button>
 
+                {selectedElements.length > 0 && (
+                  <>
+                    <div className="h-4 w-px bg-slate-800 mx-1" />
+                    <button
+                      type="button"
+                      onClick={handleDeleteSelected}
+                      className="px-2 py-1 rounded-xl text-xs font-bold bg-rose-600/20 text-rose-400 hover:bg-rose-600/30 border border-rose-500/30 flex items-center gap-1 transition-all"
+                      title="Delete Selected Items (Delete or Backspace)"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete ({selectedElements.length})</span>
+                    </button>
+                  </>
+                )}
+
                 <div className="h-4 w-px bg-slate-800 mx-1" />
+
+                <button
+                  type="button"
+                  onClick={() => setShowShortcutsModal(true)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                  title="Keyboard Shortcuts & Gestures (?)"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                </button>
 
                 <button
                   type="button"
@@ -1476,6 +2101,11 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
                 <span>
                   Cursor: {(cursorPos.x / SCALE_PPM).toFixed(1)}m, {(cursorPos.y / SCALE_PPM).toFixed(1)}m
                 </span>
+                {selectedElements.length > 0 && (
+                  <span className="text-indigo-400 font-bold">
+                    {selectedElements.length} {selectedElements.length === 1 ? 'item' : 'items'} selected
+                  </span>
+                )}
               </div>
 
               <div className="pointer-events-auto bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-800 text-slate-300 flex items-center gap-3">
@@ -1511,13 +2141,18 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => setSidebarTab('inspector')}
-                className={`flex-1 py-1.5 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all ${
+                className={`flex-1 py-1.5 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all relative ${
                   sidebarTab === 'inspector'
                     ? 'bg-emerald-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
                 }`}
               >
                 <Square className="w-3.5 h-3.5" /> Inspector
+                {selectedElements.length > 1 && (
+                  <span className="ml-1.5 px-1.5 py-0.2 bg-indigo-500 text-white rounded-full text-[9px] font-bold">
+                    {selectedElements.length}
+                  </span>
+                )}
               </button>
 
               <button
@@ -1548,6 +2183,11 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
                   selectedWall={activeSelectedWall}
                   selectedDoor={activeSelectedDoor}
                   selectedWin={activeSelectedWin}
+                  selectedCount={selectedElements.length}
+                  selectedCountsByType={selectedCountsByType}
+                  totalSelectedArea={totalSelectedArea}
+                  onClearSelection={() => setSelectedElements([])}
+                  onDuplicateAllSelected={handleDuplicateAllSelected}
                   onUpdateShape={handleUpdateShape}
                   onDeleteShape={handleDeleteShape}
                   onDuplicateShape={handleDuplicateShape}
@@ -1559,23 +2199,7 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
                     setWalls(next);
                     pushToHistory({ walls: next, doors, windows, rooms, dimensions, columns, shapes });
                   }}
-                  onDeleteSelected={() => {
-                    if (selectedElement?.type === 'shape') {
-                      handleDeleteShape(selectedElement.id);
-                    } else if (selectedElement?.type === 'wall') {
-                      const next = walls.filter((w) => w.id !== selectedElement.id);
-                      setWalls(next);
-                      setSelectedElement(null);
-                    } else if (selectedElement?.type === 'door') {
-                      const next = doors.filter((d) => d.id !== selectedElement.id);
-                      setDoors(next);
-                      setSelectedElement(null);
-                    } else if (selectedElement?.type === 'window') {
-                      const next = windows.filter((w) => w.id !== selectedElement.id);
-                      setWindows(next);
-                      setSelectedElement(null);
-                    }
-                  }}
+                  onDeleteSelected={handleDeleteSelected}
                   chbAreaSqM={chbAreaSqM}
                 />
               )}
@@ -1617,10 +2241,14 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
                         <div
                           key={s.id}
                           onClick={() => {
-                            setSelectedElement({ type: 'shape', id: s.id });
+                            setSelectedElements([{ type: 'shape', id: s.id }]);
                             setSidebarTab('inspector');
                           }}
-                          className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 cursor-pointer flex justify-between items-center transition-colors"
+                          className={`p-2.5 rounded-xl border cursor-pointer flex justify-between items-center transition-colors ${
+                            selectedElementIds.has(s.id)
+                              ? 'bg-emerald-950/40 border-emerald-700/80 text-emerald-300'
+                              : 'bg-slate-800/80 hover:bg-slate-800 border-slate-700/80'
+                          }`}
                         >
                           <div>
                             <span className="font-bold text-slate-200 block text-xs">{s.name}</span>
@@ -1641,6 +2269,151 @@ export const BlueprintDesignerModal: React.FC<Props> = ({
           </div>
         </div>
       </div>
+
+      {/* Confirmation Modal: Delete All / Reset Blueprint */}
+      {showClearConfirmModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-fade-in">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="w-10 h-10 rounded-xl bg-rose-950/80 border border-rose-800/60 flex items-center justify-center">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-100">Delete All Elements?</h3>
+                <p className="text-xs text-slate-400">This will clear all shapes, walls, doors, windows, and dimensions from this blueprint.</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800 text-xs text-slate-300 space-y-1">
+              <div className="flex justify-between">
+                <span>Room Shapes to remove:</span>
+                <span className="font-bold text-slate-100 font-mono">{shapes.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Walls & Partitions to remove:</span>
+                <span className="font-bold text-slate-100 font-mono">{walls.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Doors & Windows to remove:</span>
+                <span className="font-bold text-slate-100 font-mono">{doors.length + windows.length}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowClearConfirmModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleClearAll();
+                  setShowClearConfirmModal(false);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-950 transition-colors"
+              >
+                Yes, Delete All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Help Modal: Keyboard Shortcuts Cheat Sheet */}
+      {showShortcutsModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-2xl animate-fade-in">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <HelpCircle className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-base font-bold text-slate-100">Keyboard & Tool Shortcuts</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowShortcutsModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 space-y-2">
+                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">Selection & Edit</span>
+                <div className="space-y-1 text-slate-300">
+                  <div className="flex justify-between items-center">
+                    <span>Select tool:</span>
+                    <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-200">V</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Drag Marquee:</span>
+                    <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-200">S</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Select All:</span>
+                    <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-200">Ctrl + A</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Delete Selected:</span>
+                    <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-200">Delete / Backspace</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Clear Blueprint:</span>
+                    <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-200">Ctrl + Shift + Del</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Multi-select:</span>
+                    <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-200">Shift + Click</kbd>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 space-y-2">
+                <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider block">Drawing Tools</span>
+                <div className="space-y-1 text-slate-300">
+                  <div className="flex justify-between items-center">
+                    <span>Room Shape:</span>
+                    <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-200">R</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Partition Wall:</span>
+                    <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-200">W</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Door:</span>
+                    <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-200">D</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Window:</span>
+                    <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-200">N</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Measure:</span>
+                    <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-200">M</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Pan Viewport:</span>
+                    <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-200">H or Alt+Drag</kbd>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setShowShortcutsModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
