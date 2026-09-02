@@ -7,6 +7,7 @@ import {
   Sparkles,
   Github,
   HelpCircle,
+  PenTool,
 } from 'lucide-react';
 
 interface Props {
@@ -16,6 +17,7 @@ interface Props {
   onImportJson: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onSaveProject: () => void;
   onOpenHelp: () => void;
+  onOpenDesigner?: () => void;
 }
 
 export const Header: React.FC<Props> = ({
@@ -25,6 +27,7 @@ export const Header: React.FC<Props> = ({
   onImportJson,
   onSaveProject,
   onOpenHelp,
+  onOpenDesigner,
 }) => {
   const [isEditingTitle, setIsEditingTitle] = useState<boolean>(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -77,6 +80,19 @@ export const Header: React.FC<Props> = ({
 
         {/* Global Actions */}
         <div className="flex items-center gap-2 flex-wrap">
+          {onOpenDesigner && (
+            <button
+              id="btn-open-blueprint-studio"
+              type="button"
+              onClick={onOpenDesigner}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 shadow-sm transition-all"
+              title="Design and draw architectural floor plan on the system"
+            >
+              <PenTool className="w-3.5 h-3.5" />
+              <span>Make Blueprint</span>
+            </button>
+          )}
+
           <input
             ref={fileInputRef}
             type="file"
@@ -132,3 +148,4 @@ export const Header: React.FC<Props> = ({
     </header>
   );
 };
+

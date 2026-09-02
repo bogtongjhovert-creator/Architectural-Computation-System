@@ -4,11 +4,14 @@ import {
   CHBSettings,
   ScaleCalibration,
   Wall,
+  EngineeringSettings,
+  BuildingElevation,
 } from './types';
 import {
   calculateProjectTotals,
   calculateWallMetrics,
   DEFAULT_ENGINEERING_SETTINGS,
+  DEFAULT_BUILDING_ELEVATION,
 } from './utils/calculator';
 import {
   createDefaultProject,
@@ -22,6 +25,7 @@ import { analyzeBlueprintImage, AnalysisResult } from './utils/blueprintAnalyzer
 
 import { Header } from './components/Header';
 import { CHBSettingsSection } from './components/CHBSettingsSection';
+import { HouseElevationCard } from './components/HouseElevationCard';
 import { BlueprintViewer } from './components/BlueprintViewer';
 import { WallMeasurementsTable } from './components/WallMeasurementsTable';
 import { WallFormModal } from './components/WallFormModal';
@@ -29,7 +33,7 @@ import { CalculationDetailsModal } from './components/CalculationDetailsModal';
 import { SummaryDashboard } from './components/SummaryDashboard';
 import { HelpModal } from './components/HelpModal';
 import { AnalysisResultsModal } from './components/AnalysisResultsModal';
-import { EngineeringSettings } from './types';
+import { BlueprintDesignerModal } from './components/BlueprintDesignerModal';
 
 export default function App() {
   // Initialize project state from LocalStorage or default sample
@@ -37,6 +41,9 @@ export default function App() {
     const loaded = loadProjectFromStorage();
     if (!loaded.engineeringSettings) {
       loaded.engineeringSettings = { ...DEFAULT_ENGINEERING_SETTINGS };
+    }
+    if (!loaded.elevation) {
+      loaded.elevation = { ...DEFAULT_BUILDING_ELEVATION };
     }
     return loaded;
   });
@@ -47,6 +54,7 @@ export default function App() {
   const [isAuditModalOpen, setIsAuditModalOpen] = useState<boolean>(false);
   const [auditTargetWall, setAuditTargetWall] = useState<Wall | null>(null);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState<boolean>(false);
+  const [isDesignerModalOpen, setIsDesignerModalOpen] = useState<boolean>(false);
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
 
   // Analysis Scanner & Results State
@@ -75,9 +83,10 @@ export default function App() {
       project.walls,
       project.chbSettings,
       project.wastePercentage,
-      project.engineeringSettings || DEFAULT_ENGINEERING_SETTINGS
+      project.engineeringSettings || DEFAULT_ENGINEERING_SETTINGS,
+      project.elevation || DEFAULT_BUILDING_ELEVATION
     );
-  }, [project.walls, project.chbSettings, project.wastePercentage, project.engineeringSettings]);
+  }, [project.walls, project.chbSettings, project.wastePercentage, project.engineeringSettings, project.elevation]);
 
   // Handlers for CHB Settings
   const handleCHBSettingsChange = (newSettings: CHBSettings) => {
@@ -97,6 +106,43 @@ export default function App() {
       walls: updatedWalls,
       updatedAt: new Date().toISOString(),
     }));
+  };
+
+  // Handlers for Building Elevation Settings
+  const handleElevationChange = (newElevation: BuildingElevation) => {
+    setProject((prev) => ({
+      ...prev,
+      elevation: newElevation,
+      updatedAt: new Date().toISOString(),
+    }));
+    showNotification(`Updated house elevation: Story height ${newElevation.floorToCeilingHeightM}m, Apex RL +${((newElevation.groundToFloorElevationM || 0) + newElevation.floorToCeilingHeightM * newElevation.numberOfStories + newElevation.gableRoofHeightM).toFixed(2)}m`);
+  };
+
+  // Batch sync all wall heights to current elevation ceiling height
+  const handleApplyElevationHeightToAllWalls = (targetHeight: number) => {
+    setProject((prev) => {
+      const updatedWalls = prev.walls.map((w) => {
+        const gross = Number((w.length * targetHeight).toFixed(2));
+        const net = Number(Math.max(0, gross - w.openingArea).toFixed(2));
+        const base = Math.ceil(net / prev.chbSettings.areaSqM);
+        const exact = Number((net / prev.chbSettings.areaSqM).toFixed(2));
+        return {
+          ...w,
+          height: targetHeight,
+          grossArea: gross,
+          netArea: net,
+          baseCHB: base,
+          exactCHB: exact,
+        };
+      });
+
+      return {
+        ...prev,
+        walls: updatedWalls,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    showNotification(`Synchronized all ${project.walls.length} walls to ${targetHeight.toFixed(2)}m height!`);
   };
 
   // Handlers for Waste Percentage
@@ -290,6 +336,42 @@ export default function App() {
     setIsAuditModalOpen(true);
   };
 
+  // Blueprint Designer Apply Handler
+  const handleApplyDesignerBlueprint = (
+    blueprintDataUrl: string,
+    blueprintName: string,
+    designerWalls: Wall[],
+    floorArea: number
+  ) => {
+    // Recalculate metrics for all incoming walls
+    const updatedWalls = designerWalls.map((w) => {
+      const m = calculateWallMetrics(w, project.chbSettings.areaSqM);
+      return {
+        ...w,
+        baseCHB: m.baseCHB,
+        exactCHB: m.exactCHB,
+      };
+    });
+
+    setProject((prev) => ({
+      ...prev,
+      blueprintDataUrl,
+      blueprintName,
+      walls: updatedWalls,
+      floorArea,
+      scale: {
+        isCalibrated: true,
+        pixelsPerMeter: 48,
+        realDistanceMeters: 1.0,
+        pixelDistance: 48,
+      },
+      updatedAt: new Date().toISOString(),
+    }));
+
+    setSelectedWallId(updatedWalls[0]?.id || null);
+    showNotification(`Applied CAD Blueprint: "${blueprintName}" with ${updatedWalls.length} walls!`);
+  };
+
   // Project Import / Export / Reset
   const handleNewProject = () => {
     if (window.confirm('Reset and start a fresh CHB quantity project?')) {
@@ -349,6 +431,7 @@ export default function App() {
         onImportJson={handleImportJson}
         onSaveProject={handleSaveProjectLocal}
         onOpenHelp={() => setIsHelpModalOpen(true)}
+        onOpenDesigner={() => setIsDesignerModalOpen(true)}
       />
 
       {/* Temporary Toast Notification */}
@@ -361,11 +444,20 @@ export default function App() {
 
       {/* Main Layout Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {/* SECTION 1 & 2: Hollow Block Explicit Settings */}
-        <CHBSettingsSection
-          settings={project.chbSettings}
-          onChange={handleCHBSettingsChange}
-        />
+        {/* Top Controls: CHB Specs & House Elevation Profile */}
+        <div className="grid grid-cols-1 gap-6">
+          <CHBSettingsSection
+            settings={project.chbSettings}
+            onChange={handleCHBSettingsChange}
+          />
+
+          <HouseElevationCard
+            elevation={project.elevation || DEFAULT_BUILDING_ELEVATION}
+            onChange={handleElevationChange}
+            onApplyToAllWalls={handleApplyElevationHeightToAllWalls}
+            totalWallLengthM={projectTotals.totalLengthM}
+          />
+        </div>
 
         {/* SECTION 3 & 9: Interactive Blueprint Viewer & Scale Calibration */}
         <div className="grid grid-cols-1 gap-6">
@@ -381,6 +473,7 @@ export default function App() {
             onAnalyzeBlueprint={handleAnalyzeBlueprint}
             selectedWallId={selectedWallId}
             onSelectWall={setSelectedWallId}
+            onOpenDesigner={() => setIsDesignerModalOpen(true)}
           />
         </div>
 
@@ -389,6 +482,7 @@ export default function App() {
           walls={project.walls}
           chbSettings={project.chbSettings}
           wastePercentage={project.wastePercentage}
+          elevation={project.elevation || DEFAULT_BUILDING_ELEVATION}
           onUpdateWall={handleUpdateWall}
           onDeleteWall={handleDeleteWall}
           onOpenAddModal={handleOpenAddWallModal}
@@ -396,6 +490,7 @@ export default function App() {
           onOpenCalculationDetails={handleOpenCalculationDetails}
           selectedWallId={selectedWallId}
           onSelectWall={setSelectedWallId}
+          onApplyElevationHeightToAll={handleApplyElevationHeightToAllWalls}
         />
 
         {/* SECTION 8 & 11: Summary Dashboard with Prominent Final Recommendation & Waste Allowance */}
@@ -409,6 +504,7 @@ export default function App() {
           onWasteChange={handleWasteChange}
           engineeringSettings={project.engineeringSettings}
           onUpdateEngineering={handleEngineeringChange}
+          elevation={project.elevation || DEFAULT_BUILDING_ELEVATION}
           totals={projectTotals}
           onOpenCalculationDetails={() => handleOpenCalculationDetails(null)}
           onExportCsv={handleExportCsv}
@@ -427,6 +523,7 @@ export default function App() {
         initialWall={editingWall}
         chbSettings={project.chbSettings}
         nextWallIndex={project.walls.length + 1}
+        elevation={project.elevation || DEFAULT_BUILDING_ELEVATION}
       />
 
       <CalculationDetailsModal
@@ -441,6 +538,7 @@ export default function App() {
         wastePercentage={project.wastePercentage}
         projectTotals={projectTotals}
         projectName={project.projectName}
+        elevation={project.elevation || DEFAULT_BUILDING_ELEVATION}
       />
 
       <HelpModal
@@ -456,6 +554,15 @@ export default function App() {
         wastePercentage={project.wastePercentage}
         onApplyResults={handleApplyAnalysisResults}
         onClose={() => setIsAnalysisModalOpen(false)}
+      />
+
+      <BlueprintDesignerModal
+        isOpen={isDesignerModalOpen}
+        onClose={() => setIsDesignerModalOpen(false)}
+        onApplyBlueprint={handleApplyDesignerBlueprint}
+        existingWalls={project.walls}
+        chbAreaSqM={project.chbSettings.areaSqM}
+        wastePercentage={project.wastePercentage}
       />
 
       {/* Footer */}

@@ -1,5 +1,5 @@
-import { BlueprintProject, CHBSettings, Wall } from '../types';
-import { DEFAULT_CHB_SETTINGS } from './calculator';
+import { BlueprintProject, CHBSettings, Wall, BuildingElevation } from '../types';
+import { DEFAULT_CHB_SETTINGS, DEFAULT_ENGINEERING_SETTINGS, DEFAULT_BUILDING_ELEVATION } from './calculator';
 import { SAMPLE_BLUEPRINTS } from './sampleBlueprints';
 
 const STORAGE_KEY = 'blueprint_chb_calculator_v1';
@@ -15,6 +15,8 @@ export function createDefaultProject(): BlueprintProject {
     blueprintFileType: 'sample',
     floorArea: sample.floorArea,
     chbSettings: { ...DEFAULT_CHB_SETTINGS },
+    engineeringSettings: { ...DEFAULT_ENGINEERING_SETTINGS },
+    elevation: { ...DEFAULT_BUILDING_ELEVATION },
     wastePercentage: 10,
     walls: JSON.parse(JSON.stringify(sample.detectedWalls)),
     scale: {
@@ -27,7 +29,7 @@ export function createDefaultProject(): BlueprintProject {
     },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    notes: 'Initial blueprint load with standard 400x200mm hollow blocks at 10% waste allowance.',
+    notes: 'Initial blueprint load with standard 400x200mm hollow blocks at 10% waste allowance and building elevation profile.',
   };
 }
 
@@ -64,6 +66,20 @@ export function loadProjectFromStorage(): BlueprintProject {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.walls && Array.isArray(parsed.walls)) {
+        // Ensure all walls have valid tracePoints if they were saved in an older version
+        const sample = SAMPLE_BLUEPRINTS[0];
+        const sampleWallMap = new Map(sample.detectedWalls.map((w) => [w.id, w.tracePoints]));
+
+        parsed.walls = parsed.walls.map((w: Wall, idx: number) => {
+          if (!w.tracePoints || !Array.isArray(w.tracePoints) || w.tracePoints.length < 2) {
+            const mappedTrace = sampleWallMap.get(w.id);
+            if (mappedTrace) {
+              return { ...w, tracePoints: mappedTrace };
+            }
+          }
+          return w;
+        });
+
         return parsed;
       }
     }

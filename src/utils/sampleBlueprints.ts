@@ -234,6 +234,7 @@ export const SAMPLE_BLUEPRINTS: SampleBlueprint[] = [
         netArea: 26.76,
         baseCHB: 335,
         color: '#60a5fa',
+        tracePoints: [{ x: 150, y: 157 }, { x: 850, y: 157 }],
         isAutoDetected: true,
       },
       {
@@ -258,6 +259,7 @@ export const SAMPLE_BLUEPRINTS: SampleBlueprint[] = [
         netArea: 28.11,
         baseCHB: 352,
         color: '#60a5fa',
+        tracePoints: [{ x: 150, y: 563 }, { x: 850, y: 563 }],
         isAutoDetected: true,
       },
       {
@@ -282,6 +284,7 @@ export const SAMPLE_BLUEPRINTS: SampleBlueprint[] = [
         netArea: 19.2,
         baseCHB: 240,
         color: '#60a5fa',
+        tracePoints: [{ x: 157, y: 150 }, { x: 157, y: 570 }],
         isAutoDetected: true,
       },
       {
@@ -306,6 +309,7 @@ export const SAMPLE_BLUEPRINTS: SampleBlueprint[] = [
         netArea: 19.56,
         baseCHB: 245,
         color: '#60a5fa',
+        tracePoints: [{ x: 843, y: 150 }, { x: 843, y: 570 }],
         isAutoDetected: true,
       },
       {
@@ -330,6 +334,7 @@ export const SAMPLE_BLUEPRINTS: SampleBlueprint[] = [
         netArea: 9.52,
         baseCHB: 119,
         color: '#38bdf8',
+        tracePoints: [{ x: 505, y: 150 }, { x: 505, y: 380 }],
         isAutoDetected: true,
       },
       {
@@ -344,6 +349,7 @@ export const SAMPLE_BLUEPRINTS: SampleBlueprint[] = [
         netArea: 9.8,
         baseCHB: 123,
         color: '#38bdf8',
+        tracePoints: [{ x: 500, y: 375 }, { x: 720, y: 375 }],
         isAutoDetected: true,
       },
       {
@@ -368,6 +374,7 @@ export const SAMPLE_BLUEPRINTS: SampleBlueprint[] = [
         netArea: 6.93,
         baseCHB: 87,
         color: '#38bdf8',
+        tracePoints: [{ x: 715, y: 370 }, { x: 715, y: 570 }],
         isAutoDetected: true,
       },
     ],
@@ -397,6 +404,7 @@ export const SAMPLE_BLUEPRINTS: SampleBlueprint[] = [
         netArea: 42.0,
         baseCHB: 525,
         color: '#60a5fa',
+        tracePoints: [{ x: 250, y: 204 }, { x: 750, y: 204 }],
         isAutoDetected: true,
       },
       {
@@ -421,6 +429,7 @@ export const SAMPLE_BLUEPRINTS: SampleBlueprint[] = [
         netArea: 33.6,
         baseCHB: 420,
         color: '#60a5fa',
+        tracePoints: [{ x: 250, y: 496 }, { x: 750, y: 496 }],
         isAutoDetected: true,
       },
       {
@@ -445,6 +454,7 @@ export const SAMPLE_BLUEPRINTS: SampleBlueprint[] = [
         netArea: 24.8,
         baseCHB: 310,
         color: '#60a5fa',
+        tracePoints: [{ x: 254, y: 200 }, { x: 254, y: 500 }],
         isAutoDetected: true,
       },
       {
@@ -459,6 +469,7 @@ export const SAMPLE_BLUEPRINTS: SampleBlueprint[] = [
         netArea: 28.0,
         baseCHB: 350,
         color: '#60a5fa',
+        tracePoints: [{ x: 746, y: 200 }, { x: 746, y: 500 }],
         isAutoDetected: true,
       },
     ],

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Wall, WallType, Opening, OpeningType, CHBSettings } from '../types';
+import { Wall, WallType, Opening, OpeningType, CHBSettings, BuildingElevation } from '../types';
 import { calculateOpeningArea, calculateWallMetrics } from '../utils/calculator';
-import { Plus, Trash2, DoorOpen, LayoutGrid, X, Check, Calculator, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, DoorOpen, LayoutGrid, X, Check, Calculator, AlertCircle, ArrowUpFromLine } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -10,6 +10,7 @@ interface Props {
   initialWall: Wall | null;
   chbSettings: CHBSettings;
   nextWallIndex: number;
+  elevation?: BuildingElevation;
 }
 
 const WALL_TYPES: WallType[] = [
@@ -40,12 +41,15 @@ export const WallFormModal: React.FC<Props> = ({
   initialWall,
   chbSettings,
   nextWallIndex,
+  elevation,
 }) => {
   const [wallId, setWallId] = useState<string>('');
   const [name, setName] = useState<string>('');
   const [type, setType] = useState<WallType>('Exterior Wall');
   const [length, setLength] = useState<string>('6.00');
-  const [height, setHeight] = useState<string>('3.00');
+  const [height, setHeight] = useState<string>(
+    elevation?.floorToCeilingHeightM ? elevation.floorToCeilingHeightM.toFixed(2) : '3.00'
+  );
   const [openings, setOpenings] = useState<Opening[]>([]);
 
   // New opening inputs
@@ -232,9 +236,16 @@ export const WallFormModal: React.FC<Props> = ({
             </div>
 
             <div>
-              <label htmlFor="wall-height-input" className="block text-xs font-bold text-blue-900 mb-1">
-                Wall Height (Meters)
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label htmlFor="wall-height-input" className="block text-xs font-bold text-blue-900">
+                  Wall Height (Meters)
+                </label>
+                {elevation && (
+                  <span className="text-[10px] text-indigo-600 font-mono font-bold">
+                    Elevation H: {elevation.floorToCeilingHeightM.toFixed(2)}m
+                  </span>
+                )}
+              </div>
               <div className="relative">
                 <input
                   id="wall-height-input"
@@ -250,6 +261,50 @@ export const WallFormModal: React.FC<Props> = ({
                 <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">
                   m
                 </span>
+              </div>
+              {/* Quick Height Elevation Buttons */}
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {elevation && (
+                  <button
+                    type="button"
+                    onClick={() => setHeight(elevation.floorToCeilingHeightM.toFixed(2))}
+                    className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono hover:bg-indigo-100"
+                  >
+                    Std Story ({elevation.floorToCeilingHeightM.toFixed(2)}m)
+                  </button>
+                )}
+                {elevation?.hasParapet && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setHeight((elevation.floorToCeilingHeightM + (elevation.parapetHeightM || 0.8)).toFixed(2))
+                    }
+                    className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono hover:bg-indigo-100"
+                  >
+                    + Parapet ({(elevation.floorToCeilingHeightM + (elevation.parapetHeightM || 0.8)).toFixed(2)}m)
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setHeight('2.80')}
+                  className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-600 font-mono hover:bg-slate-200"
+                >
+                  2.8m
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHeight('3.00')}
+                  className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-600 font-mono hover:bg-slate-200"
+                >
+                  3.0m
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHeight('3.50')}
+                  className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-600 font-mono hover:bg-slate-200"
+                >
+                  3.5m
+                </button>
               </div>
             </div>
           </div>

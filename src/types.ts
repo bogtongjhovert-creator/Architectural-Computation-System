@@ -69,6 +69,20 @@ export interface EngineeringSettings {
   rcColumnWidthM: number; // default 0.20m
 }
 
+export interface BuildingElevation {
+  groundToFloorElevationM: number; // Finished Floor Line (FFL) above Natural Ground Level (NGL), e.g. 0.45m
+  floorToCeilingHeightM: number; // Clear floor-to-ceiling / wall height, e.g. 3.00m
+  foundationDepthM: number; // Footing / plinth stem wall below ground, e.g. 0.60m
+  includePlinthMasonry: boolean; // Whether stem wall CHB below FFL is included in masonry
+  plinthMasonryHeightM: number; // Stem wall height if included, e.g. 0.45m
+  gableRoofHeightM: number; // Triangular gable roof / apex rise height, e.g. 1.50m
+  hasGableWalls: boolean; // Whether gable apex masonry is included
+  gableWallsCount: number; // Number of gable ends, e.g. 2
+  parapetHeightM: number; // Parapet / firewall extension above ceiling beam, e.g. 0.80m
+  hasParapet: boolean; // Whether parapet extension is included
+  numberOfStories: number; // 1 = 1-Storey Bungalow, 2 = 2-Storey, etc.
+}
+
 export interface BlueprintProject {
   id: string;
   projectName: string;
@@ -79,11 +93,69 @@ export interface BlueprintProject {
   chbSettings: CHBSettings;
   wastePercentage: number; // e.g. 5, 8, 10
   engineeringSettings?: EngineeringSettings;
+  elevation?: BuildingElevation;
   walls: Wall[];
   scale: ScaleCalibration;
   createdAt: string;
   updatedAt: string;
   notes?: string;
+}
+
+export interface DesignerDoor {
+  id: string;
+  wallId?: string;
+  x: number; // in meters relative to canvas origin
+  y: number;
+  rotation?: number; // degrees
+  widthM: number; // e.g. 0.90
+  heightM?: number; // e.g. 2.10
+  label: string;
+  swingDirection?: 'left-in' | 'left-out' | 'right-in' | 'right-out' | 'sliding' | 'double';
+}
+
+export interface DesignerWindow {
+  id: string;
+  wallId?: string;
+  x: number; // in meters
+  y: number;
+  rotation?: number;
+  widthM: number; // e.g. 1.20
+  heightM: number; // e.g. 1.20
+  label: string;
+}
+
+export interface DesignerRoomLabel {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  widthM?: number;
+  heightM?: number;
+  customArea?: number;
+}
+
+export interface DesignerDimension {
+  id: string;
+  p1: { x: number; y: number };
+  p2: { x: number; y: number };
+  label: string;
+  offset: number;
+}
+
+export interface DesignerColumn {
+  id: string;
+  x: number;
+  y: number;
+  sizeM: number; // e.g. 0.20
+}
+
+export interface DesignerPlanState {
+  walls: Wall[];
+  doors: DesignerDoor[];
+  windows: DesignerWindow[];
+  rooms: DesignerRoomLabel[];
+  dimensions: DesignerDimension[];
+  columns: DesignerColumn[];
 }
 
 export interface CalculationAuditStep {
@@ -118,6 +190,14 @@ export interface ProjectTotals {
   finalCHBQuantity: number;
   chbAreaSqM: number;
   chbPerSqM: number;
+  // Elevation Level Metrics
+  fflElevationM: number; // Finished Floor Level (+0.45m)
+  topOfWallElevationM: number; // Beam/Top of wall level (+3.45m)
+  totalApexElevationM: number; // Ridge / roof apex level (+4.95m)
+  totalBuildingHeightM: number; // Total height from NGL to apex
+  totalStructuralHeightM: number; // From footing to apex
+  gableAddAreaSqM: number; // Additional area if gable triangle masonry is enabled
+  plinthAddAreaSqM: number; // Additional area if plinth stem wall is enabled
   // Accurate auxiliary construction materials (DPWH / NSCP Standards)
   mortarCementBags: number;
   plasterCementBags: number;

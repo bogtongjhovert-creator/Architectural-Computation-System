@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Wall, CHBSettings, ProjectTotals } from '../types';
+import { Wall, CHBSettings, ProjectTotals, BuildingElevation } from '../types';
 import {
   generateWallAudit,
   formatProjectCalculationText,
@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Layers,
   Scale,
+  ArrowUpFromLine,
 } from 'lucide-react';
 
 interface Props {
@@ -24,6 +25,7 @@ interface Props {
   wastePercentage: number;
   projectTotals: ProjectTotals;
   projectName: string;
+  elevation?: BuildingElevation;
 }
 
 export const CalculationDetailsModal: React.FC<Props> = ({
@@ -35,6 +37,7 @@ export const CalculationDetailsModal: React.FC<Props> = ({
   wastePercentage,
   projectTotals,
   projectName,
+  elevation,
 }) => {
   const [copied, setCopied] = useState<boolean>(false);
 
@@ -198,6 +201,34 @@ export const CalculationDetailsModal: React.FC<Props> = ({
                   <span className="text-blue-600 ml-2">→ Base Whole: ⌈{projectTotals.exactBaseCHB.toFixed(2)}⌉ = {projectTotals.baseCHBQuantity.toLocaleString()} pcs</span>
                 </div>
               </div>
+
+              {/* Elevation & Vertical Geometry Audit */}
+              {projectTotals.totalBuildingHeightM !== undefined && (
+                <div className="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4">
+                  <div className="font-sans font-bold text-indigo-900 text-xs mb-1 flex items-center gap-1.5">
+                    <ArrowUpFromLine className="w-3.5 h-3.5 text-indigo-600" />
+                    House Elevation &amp; Vertical Geometry Audit
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-[11px] font-sans">
+                    <div className="bg-white p-2 rounded-xl border border-indigo-100">
+                      <span className="text-slate-400 block text-[10px]">Finished Floor (FFL)</span>
+                      <span className="font-bold text-slate-800 font-mono">+{projectTotals.fflElevationM?.toFixed(2)}m</span>
+                    </div>
+                    <div className="bg-white p-2 rounded-xl border border-indigo-100">
+                      <span className="text-slate-400 block text-[10px]">Top of Wall (TOW)</span>
+                      <span className="font-bold text-slate-800 font-mono">+{projectTotals.topOfWallElevationM?.toFixed(2)}m</span>
+                    </div>
+                    <div className="bg-white p-2 rounded-xl border border-indigo-100">
+                      <span className="text-slate-400 block text-[10px]">Roof Apex (RL)</span>
+                      <span className="font-bold text-indigo-700 font-mono">+{projectTotals.totalApexElevationM?.toFixed(2)}m</span>
+                    </div>
+                    <div className="bg-white p-2 rounded-xl border border-indigo-100">
+                      <span className="text-slate-400 block text-[10px]">Total Building Height</span>
+                      <span className="font-bold text-indigo-900 font-mono">{projectTotals.totalBuildingHeightM?.toFixed(2)}m</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Step 4: Waste Allowance & Final Recommendation */}
               <div className="bg-slate-900 text-white rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4">

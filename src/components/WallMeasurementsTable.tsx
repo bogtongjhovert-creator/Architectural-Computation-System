@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Wall, CHBSettings } from '../types';
+import { Wall, CHBSettings, BuildingElevation } from '../types';
 import { calculateWallMetrics } from '../utils/calculator';
 import {
   Plus,
@@ -8,6 +8,10 @@ import {
   FileText,
   DoorOpen,
   Sparkles,
+  Target,
+  MapPin,
+  Eye,
+  ArrowUpFromLine,
 } from 'lucide-react';
 
 interface Props {
@@ -21,6 +25,8 @@ interface Props {
   onOpenCalculationDetails: (wall: Wall | null) => void;
   selectedWallId: string | null;
   onSelectWall: (id: string | null) => void;
+  elevation?: BuildingElevation;
+  onApplyHeightToAllWalls?: (newHeight: number) => void;
 }
 
 export const WallMeasurementsTable: React.FC<Props> = ({
@@ -34,6 +40,8 @@ export const WallMeasurementsTable: React.FC<Props> = ({
   onOpenCalculationDetails,
   selectedWallId,
   onSelectWall,
+  elevation,
+  onApplyHeightToAllWalls,
 }) => {
   // Track inline editing fields
   const [editingWallId, setEditingWallId] = useState<string | null>(null);
@@ -92,6 +100,29 @@ export const WallMeasurementsTable: React.FC<Props> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {elevation && onApplyHeightToAllWalls && walls.length > 0 && (
+            <button
+              id="btn-sync-all-wall-heights"
+              type="button"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Set all ${walls.length} wall heights to the house elevation story height (${elevation.floorToCeilingHeightM.toFixed(
+                      2
+                    )}m)?`
+                  )
+                ) {
+                  onApplyHeightToAllWalls(elevation.floorToCeilingHeightM);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors"
+              title="Batch update all wall heights to house elevation height"
+            >
+              <ArrowUpFromLine className="w-3.5 h-3.5" />
+              Sync Height ({elevation.floorToCeilingHeightM.toFixed(2)}m)
+            </button>
+          )}
+
           <button
             id="btn-view-all-calculation-details"
             type="button"
@@ -139,29 +170,55 @@ export const WallMeasurementsTable: React.FC<Props> = ({
                 const windowOpenings = w.openings.filter((o) => o.type !== 'door');
                 const finalWithWaste = Math.ceil(w.baseCHB * (1 + wastePercentage / 100));
 
+                const handleRowClick = () => {
+                  onSelectWall(isSelected ? null : w.id);
+                };
+
+                const handleFocusBlueprint = (e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  onSelectWall(w.id);
+                  const viewer = document.getElementById('blueprint-viewer-panel');
+                  if (viewer) {
+                    viewer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  }
+                };
+
                 return (
                   <tr
                     key={w.id}
                     id={`wall-row-${w.id}`}
-                    onClick={() => onSelectWall(w.id)}
-                    className={`transition-colors hover:bg-slate-50/80 cursor-pointer ${
-                      isSelected ? 'bg-blue-50/60 ring-1 ring-blue-500/50' : ''
+                    onClick={handleRowClick}
+                    className={`transition-all duration-150 cursor-pointer ${
+                      isSelected
+                        ? 'bg-amber-50/80 ring-2 ring-amber-500/80 shadow-xs'
+                        : 'hover:bg-slate-50/80'
                     }`}
                   >
                     {/* Wall ID & Type */}
                     <td className="py-2.5 px-3.5">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100 text-[11px]">
+                        <span
+                          className={`font-bold px-2 py-0.5 rounded-lg border text-[11px] font-mono transition-colors ${
+                            isSelected
+                              ? 'text-amber-800 bg-amber-100 border-amber-300'
+                              : 'text-blue-700 bg-blue-50 border-blue-100'
+                          }`}
+                        >
                           {w.id}
                         </span>
                         <div>
                           <div className="font-sans font-bold text-slate-900 text-xs truncate max-w-[140px]" title={w.name}>
                             {w.name}
                           </div>
-                          <div className="text-[10px] text-slate-400 font-sans">
-                            {w.type}
-                            {w.isAutoDetected && (
-                              <span className="ml-1 text-[9px] text-blue-600 font-semibold">● Analyzed</span>
+                          <div className="text-[10px] text-slate-400 font-sans flex items-center gap-1">
+                            <span>{w.type}</span>
+                            {isSelected && (
+                              <span className="text-[9px] bg-amber-200/80 text-amber-900 font-bold px-1 rounded">
+                                📍 On Plan
+                              </span>
+                            )}
+                            {w.isAutoDetected && !isSelected && (
+                              <span className="text-[9px] text-blue-600 font-semibold">● Analyzed</span>
                             )}
                           </div>
                         </div>
@@ -258,6 +315,20 @@ export const WallMeasurementsTable: React.FC<Props> = ({
                     {/* Action buttons */}
                     <td className="py-2.5 px-3.5 text-center">
                       <div className="flex items-center justify-center gap-1">
+                        {/* Highlight on Blueprint Trigger Button */}
+                        <button
+                          type="button"
+                          onClick={handleFocusBlueprint}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            isSelected
+                              ? 'text-amber-700 bg-amber-100 hover:bg-amber-200'
+                              : 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'
+                          }`}
+                          title="Highlight Wall on Blueprint Photo"
+                        >
+                          <Target className="w-3.5 h-3.5" />
+                        </button>
+
                         {isEditing ? (
                           <button
                             type="button"

@@ -1,5 +1,5 @@
 import React from 'react';
-import { CHBSettings, EngineeringSettings, ProjectTotals, ScaleCalibration } from '../types';
+import { CHBSettings, EngineeringSettings, ProjectTotals, ScaleCalibration, BuildingElevation } from '../types';
 import {
   FileText,
   Download,
@@ -12,6 +12,7 @@ import {
   Hammer,
   Settings2,
   Check,
+  ArrowUpFromLine,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -25,6 +26,7 @@ interface Props {
   onWasteChange: (waste: number) => void;
   engineeringSettings?: EngineeringSettings;
   onUpdateEngineering?: (eng: EngineeringSettings) => void;
+  elevation?: BuildingElevation;
   totals: ProjectTotals;
   onOpenCalculationDetails: () => void;
   onExportCsv: () => void;
@@ -50,6 +52,7 @@ export const SummaryDashboard: React.FC<Props> = ({
   onWasteChange,
   engineeringSettings,
   onUpdateEngineering,
+  elevation,
   totals,
   onOpenCalculationDetails,
   onExportCsv,
@@ -80,6 +83,11 @@ export const SummaryDashboard: React.FC<Props> = ({
       onUpdateEngineering({ ...currentEng, ...partial });
     }
   };
+
+  const fflM = totals.fflElevationM !== undefined ? totals.fflElevationM : elevation?.groundToFloorElevationM || 0.45;
+  const towM = totals.topOfWallElevationM !== undefined ? totals.topOfWallElevationM : (fflM + (elevation?.floorToCeilingHeightM || 3.0) * (elevation?.numberOfStories || 1));
+  const apexM = totals.totalApexElevationM !== undefined ? totals.totalApexElevationM : towM + (elevation?.gableRoofHeightM || 0);
+  const totalHeightM = totals.totalBuildingHeightM !== undefined ? totals.totalBuildingHeightM : apexM;
 
   return (
     <section id="summary-dashboard" className="space-y-4 font-sans">
@@ -167,8 +175,8 @@ export const SummaryDashboard: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* 3 Core Summary Bento Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-medium">
+      {/* 4 Core Summary Bento Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-medium">
         {/* BLUEPRINT CARD */}
         <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex flex-col justify-between">
           <div>
@@ -178,20 +186,20 @@ export const SummaryDashboard: React.FC<Props> = ({
                 Blueprint
               </span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-mono">
-                Project
+                Plan Info
               </span>
             </div>
 
             <div className="space-y-2 text-slate-700">
               <div className="flex justify-between items-baseline">
                 <span className="text-slate-500">Project:</span>
-                <span className="font-bold text-slate-900 truncate max-w-[150px]" title={projectName}>
+                <span className="font-bold text-slate-900 truncate max-w-[130px]" title={projectName}>
                   {projectName || 'Bungalow Residence'}
                 </span>
               </div>
               <div className="flex justify-between items-baseline">
                 <span className="text-slate-500">Plan File:</span>
-                <span className="font-semibold text-slate-800 truncate max-w-[150px]" title={blueprintName}>
+                <span className="font-semibold text-slate-800 truncate max-w-[130px]" title={blueprintName}>
                   {blueprintName || 'Architectural Floor Plan'}
                 </span>
               </div>
@@ -205,6 +213,48 @@ export const SummaryDashboard: React.FC<Props> = ({
                 <span className="text-slate-500">Scale:</span>
                 <span className={`font-mono font-bold ${scale.isCalibrated ? 'text-emerald-700' : 'text-amber-700'}`}>
                   {scale.isCalibrated ? 'Calibrated' : 'Standard (70px/m)'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* HOUSE ELEVATION CARD */}
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100 text-slate-400 uppercase tracking-widest font-bold text-[11px]">
+              <span className="flex items-center gap-1.5 text-indigo-600">
+                <ArrowUpFromLine className="w-4 h-4" />
+                House Elevation
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-mono font-bold">
+                {elevation?.numberOfStories || 1}-Storey
+              </span>
+            </div>
+
+            <div className="space-y-2 text-slate-700 font-mono">
+              <div className="flex justify-between items-baseline font-sans">
+                <span className="text-slate-500">Floor Line (FFL):</span>
+                <span className="font-bold text-slate-900 font-mono">
+                  +{fflM.toFixed(2)} m
+                </span>
+              </div>
+              <div className="flex justify-between items-baseline font-sans">
+                <span className="text-slate-500">Top of Wall:</span>
+                <span className="text-slate-800 font-mono">
+                  +{towM.toFixed(2)} m
+                </span>
+              </div>
+              <div className="flex justify-between items-baseline font-sans">
+                <span className="text-slate-500">Roof Apex (RL):</span>
+                <span className="text-indigo-600 font-bold font-mono">
+                  +{apexM.toFixed(2)} m
+                </span>
+              </div>
+              <div className="flex justify-between items-baseline pt-1.5 border-t border-slate-100 font-sans">
+                <span className="text-slate-700 font-bold">Total Height:</span>
+                <span className="text-indigo-700 font-black text-sm font-mono">
+                  {totalHeightM.toFixed(2)} m
                 </span>
               </div>
             </div>

@@ -1,4 +1,5 @@
 import {
+  BuildingElevation,
   CHBSettings,
   EngineeringSettings,
   Opening,
@@ -22,6 +23,20 @@ export const DEFAULT_ENGINEERING_SETTINGS: EngineeringSettings = {
   rebarSpacing: 'standard',
   rcColumnsCount: 0,
   rcColumnWidthM: 0.2,
+};
+
+export const DEFAULT_BUILDING_ELEVATION: BuildingElevation = {
+  groundToFloorElevationM: 0.45,
+  floorToCeilingHeightM: 3.00,
+  foundationDepthM: 0.60,
+  includePlinthMasonry: false,
+  plinthMasonryHeightM: 0.45,
+  gableRoofHeightM: 1.50,
+  hasGableWalls: false,
+  gableWallsCount: 2,
+  parapetHeightM: 0.80,
+  hasParapet: false,
+  numberOfStories: 1,
 };
 
 /**
@@ -115,7 +130,8 @@ export function calculateProjectTotals(
   walls: Wall[],
   chbSettings: CHBSettings,
   wastePercentage: number = 8,
-  engineering: EngineeringSettings = DEFAULT_ENGINEERING_SETTINGS
+  engineering: EngineeringSettings = DEFAULT_ENGINEERING_SETTINGS,
+  elevation: BuildingElevation = DEFAULT_BUILDING_ELEVATION
 ): ProjectTotals {
   const safeChbArea = chbSettings.areaSqM > 0 ? chbSettings.areaSqM : 0.08;
   const safeWaste = Math.max(0, Number(wastePercentage) || 0);
@@ -131,12 +147,35 @@ export function calculateProjectTotals(
     totalOpeningAreaSqM += metrics.openingArea;
   });
 
+  // Calculate Additional Gable Wall Masonry if enabled
+  let gableAddAreaSqM = 0;
+  if (elevation.hasGableWalls && elevation.gableRoofHeightM > 0) {
+    // Average exterior wall span (or standard building width ~7m)
+    // Triangle area = 0.5 * base * height * count
+    const extWalls = walls.filter((w) => w.type === 'Exterior Wall' || w.type === 'Firewall');
+    const avgSpan = extWalls.length > 0 ? (extWalls.reduce((a, b) => a + b.length, 0) / extWalls.length) : 7.0;
+    const gableCount = Math.max(1, elevation.gableWallsCount || 2);
+    gableAddAreaSqM = Number((0.5 * avgSpan * elevation.gableRoofHeightM * gableCount).toFixed(2));
+  }
+
+  // Calculate Additional Plinth Stem Wall Masonry if enabled
+  let plinthAddAreaSqM = 0;
+  if (elevation.includePlinthMasonry && elevation.plinthMasonryHeightM > 0) {
+    const perimeterLength = walls
+      .filter((w) => w.type === 'Exterior Wall' || w.type === 'Firewall' || w.type === 'Perimeter / Fence')
+      .reduce((a, b) => a + b.length, 0);
+    const effectiveLen = perimeterLength > 0 ? perimeterLength : totalLengthM;
+    plinthAddAreaSqM = Number((effectiveLen * elevation.plinthMasonryHeightM).toFixed(2));
+  }
+
+  totalGrossAreaSqM += gableAddAreaSqM + plinthAddAreaSqM;
+
   totalLengthM = Number(totalLengthM.toFixed(2));
   totalGrossAreaSqM = Number(totalGrossAreaSqM.toFixed(2));
   totalOpeningAreaSqM = Number(totalOpeningAreaSqM.toFixed(2));
 
   // RC Column or Corner deduction if configured
-  const avgHeight = walls.length > 0 ? totalGrossAreaSqM / Math.max(0.1, totalLengthM) : 3.0;
+  const avgHeight = walls.length > 0 ? totalGrossAreaSqM / Math.max(0.1, totalLengthM) : (elevation.floorToCeilingHeightM || 3.0);
   const colCount = Math.max(0, engineering.rcColumnsCount || 0);
   const colWidth = Math.max(0, engineering.rcColumnWidthM || 0.2);
   const columnDeductionAreaSqM = Number((colCount * colWidth * avgHeight).toFixed(2));
@@ -154,6 +193,16 @@ export function calculateProjectTotals(
   const wasteMultiplier = 1 + safeWaste / 100;
   const finalCHBQuantity = Math.ceil(baseCHBQuantity * wasteMultiplier);
   const wasteQuantity = finalCHBQuantity - baseCHBQuantity;
+
+  // Elevation Level Metrics
+  const stories = Math.max(1, elevation.numberOfStories || 1);
+  const fflElevationM = Number((elevation.groundToFloorElevationM || 0.45).toFixed(2));
+  const wallClearHeight = Number((elevation.floorToCeilingHeightM || 3.0).toFixed(2));
+  const topOfWallElevationM = Number((fflElevationM + (wallClearHeight * stories)).toFixed(2));
+  const gableRise = elevation.hasGableWalls ? (elevation.gableRoofHeightM || 1.5) : (elevation.hasParapet ? (elevation.parapetHeightM || 0.8) : 0);
+  const totalApexElevationM = Number((topOfWallElevationM + gableRise).toFixed(2));
+  const totalBuildingHeightM = Number((totalApexElevationM).toFixed(2)); // NGL to apex
+  const totalStructuralHeightM = Number((totalBuildingHeightM + (elevation.foundationDepthM || 0.6)).toFixed(2));
 
   // =========================================================================
   // AUXILIARY MATERIALS: Strictly Grounded in Philippine DPWH & NSCP Standards
@@ -229,6 +278,13 @@ export function calculateProjectTotals(
     finalCHBQuantity,
     chbAreaSqM: safeChbArea,
     chbPerSqM: chbSettings.blocksPerSqM,
+    fflElevationM,
+    topOfWallElevationM,
+    totalApexElevationM,
+    totalBuildingHeightM,
+    totalStructuralHeightM,
+    gableAddAreaSqM,
+    plinthAddAreaSqM,
     mortarCementBags,
     plasterCementBags,
     totalCementBags,
